@@ -1,0 +1,79 @@
+
+# ============================================
+# GRANT MONEY — UNREAL ENGINE GITIGNORE
+# ============================================
+
+# Unreal generated files
+**/Binaries/
+**/Intermediate/
+**/Saved/
+**/DerivedDataCache/
+
+# Unreal temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.autosave
+*.ubulk.tmp
+
+# Visual Studio / Rider / IDE
+.vs/
+**/.vs/
+.idea/
+**/.idea/
+
+*.sln
+*.suo
+*.user
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.VC.VC.opendb
+*.VC.db-shm
+*.VC.db-wal
+*.opensdf
+*.sdf
+*.ipch
+
+# Generated compiled files
+*.pdb
+*.obj
+*.pch
+*.ilk
+*.idb
+
+# Operating system junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local Python caches
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Packaged builds and exports
+/PackagedBuilds/
+/Packages/
+/LocalBuilds/
+/Releases/
+/Game/PackagedBuilds/
+/Game/LocalBuilds/
+/Game/Windows/
+/Game/WindowsNoEditor/
+
+# Local temporary prototype exports
+/Prototypes/**/Intermediate/
+/Prototypes/**/Binaries/
+/Prototypes/**/Saved/
+/Prototypes/**/DerivedDataCache/
+
+# Sensitive/local environment files
+.env
+.env.*
+!.env.example
+*.secret
+*.key
+*.pem

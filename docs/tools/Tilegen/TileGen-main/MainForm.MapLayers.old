@@ -1,0 +1,475 @@
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace EntitledLogicTileGen;
+
+/// <summary>
+/// Map-editor rework: decoration &amp; collision layers on top of the existing
+/// ground layer, a set of paint tools (paint / fill / rectangle / line) and
+/// snapshot-based undo / redo.
+///
+/// The ground layer is the original <c>_mapData</c> / <c>_inMap</c> pair, left
+/// untouched so the BSP generator, effects and the existing C++ ground array
+/// keep working exactly as before.  Decoration and collision are independent
+/// overlay grids; the active layer selects which one paint operations affect.
+/// </summary>
+public sealed partial class MainForm
+{
+    private enum MapLayer { Ground, Decoration, Collision }
+    private enum MapTool { Paint, Fill, Rectangle, Line }
+
+    private MapLayer _activeLayer = MapLayer.Ground;
+    private MapTool _activeTool = MapTool.Paint;
+
+    // Overlay layers (ground stays in _mapData).  Decoration stores tile
+    // indices (0 = none); collision stores 0 = passable, 1 = blocked.
+    private readonly ushort[,] _decoData = new ushort[MapCells, MapCells];
+    private readonly ushort[,] _collisionData = new ushort[MapCells, MapCells];
+
+    // ---- drag state for the tools ----
+    private bool _dragging;
+    private bool _dragErase;
+    private int _dragStartX, _dragStartY, _dragCurX, _dragCurY;
+
+    // ---- undo / redo (whole-grid snapshots; one per edit/stroke) ----
+    private sealed class MapSnapshot
+    {
+        public ushort[,] Ground = null!;
+        public ushort[,] Deco = null!;
+        public ushort[,] Collision = null!;
+        public bool[,] Valid = null!;
+    }
+
+    private readonly List<MapSnapshot> _undo = new();
+    private readonly List<MapSnapshot> _redo = new();
+    private const int UndoLimit = 64;
+
+    private Button _btnUndo = null!;
+    private Button _btnRedo = null!;
+    private Label _layerInfo = null!;
+
+    // ═══════════════════════════════════════════════════════
+    //  UI — fourth column on the map tab
+    // ═══════════════════════════════════════════════════════
+
+    private void BuildMapToolsColumn()
+    {
+        const int cx = 995;
+
+        // ---- Layers ----
+        GroupBox layers = MakeGroup("Active Layer", cx, 10, 228, 112);
+        RadioButton rbGround = MakeRadio("Ground (terrain)", 12, 26, true);
+        RadioButton rbDeco   = MakeRadio("Decoration", 12, 52, false);
+        RadioButton rbColl   = MakeRadio("Collision (blocked)", 12, 78, false);
+        rbGround.CheckedChanged += (_, _) => { if (rbGround.Checked) SetActiveLayer(MapLayer.Ground); };
+        rbDeco.CheckedChanged   += (_, _) => { if (rbDeco.Checked)   SetActiveLayer(MapLayer.Decoration); };
+        rbColl.CheckedChanged   += (_, _) => { if (rbColl.Checked)   SetActiveLayer(MapLayer.Collision); };
+        layers.Controls.AddRange(new Control[] { rbGround, rbDeco, rbColl });
+
+        // ---- Tools ----
+        GroupBox tools = MakeGroup("Tool", cx, 130, 228, 138);
+        RadioButton rbPaint = MakeRadio("Paint / drag", 12, 26, true);
+        RadioButton rbFill  = MakeRadio("Flood fill", 12, 52, false);
+        RadioButton rbRect  = MakeRadio("Rectangle (filled)", 12, 78, false);
+        RadioButton rbLine  = MakeRadio("Line", 12, 104, false);
+        rbPaint.CheckedChanged += (_, _) => { if (rbPaint.Checked) _activeTool = MapTool.Paint; };
+        rbFill.CheckedChanged  += (_, _) => { if (rbFill.Checked)  _activeTool = MapTool.Fill; };
+        rbRect.CheckedChanged  += (_, _) => { if (rbRect.Checked)  _activeTool = MapTool.Rectangle; };
+        rbLine.CheckedChanged  += (_, _) => { if (rbLine.Checked)  _activeTool = MapTool.Line; };
+        tools.Controls.AddRange(new Control[] { rbPaint, rbFill, rbRect, rbLine });
+
+        // ---- Edit (undo / redo) ----
+        GroupBox edit = MakeGroup("Edit", cx, 276, 228, 100);
+        _btnUndo = MakeButton("↶ Undo", 12, 26, 100, 30);
+        _btnRedo = MakeButton("↷ Redo", 118, 26, 100, 30);
+        _btnUndo.Click += (_, _) => Undo();
+        _btnRedo.Click += (_, _) => Redo();
+        _layerInfo = new Label
+        {
+            Location = new Point(12, 64),
+            Size = new Size(206, 28),
+            Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+            ForeColor = Color.FromArgb(120, 120, 120),
+            Text = "Right-click / drag erases. Ctrl+click shows tile info."
+        };
+        edit.Controls.AddRange(new Control[] { _btnUndo, _btnRedo, _layerInfo });
+
+        // ---- Data (export / import / atlas) ----
+        GroupBox data = MakeGroup("Data", cx, 384, 228, 196);
+        Button btnJson   = MakeButton("Export JSON…", 12, 26, 204, 28);
+        Button btnCsv    = MakeButton("Export CSV…", 12, 60, 204, 28);
+        Button btnImport = MakeButton("Import Map…", 12, 94, 204, 28);
+        Button btnAtlas  = MakeButton("Export Tile Atlas…", 12, 138, 204, 28);
+        btnJson.Click   += ExportJson_Click;
+        btnCsv.Click    += ExportCsv_Click;
+        btnImport.Click += ImportMap_Click;
+        btnAtlas.Click  += ExportAtlas_Click;
+        data.Controls.AddRange(new Control[] { btnJson, btnCsv, btnImport, btnAtlas });
+
+        _tabMap.Controls.Add(layers);
+        _tabMap.Controls.Add(tools);
+        _tabMap.Controls.Add(edit);
+        _tabMap.Controls.Add(data);
+
+        // Wire the extra mouse events on the already-built grid.
+        _mapGrid.MouseMove += MapGrid_MouseMove;
+        _mapGrid.MouseUp += MapGrid_MouseUp;
+
+        UpdateUndoButtons();
+    }
+
+    private static RadioButton MakeRadio(string text, int x, int y, bool check)
+    {
+        return new RadioButton
+        {
+            Text = text,
+            Location = new Point(x, y),
+            AutoSize = true,
+            Checked = check,
+            Font = new Font("Segoe UI", 9f)
+        };
+    }
+
+    private void SetActiveLayer(MapLayer layer)
+    {
+        _activeLayer = layer;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Interaction (called from MapGrid_MouseDown and the wired events)
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Tool-aware mouse-down dispatch.  Returns false if the caller
+    /// (MapGrid_MouseDown) should fall back to its structure-mode handling.
+    /// </summary>
+    private bool OnMapToolMouseDown(int x, int y, MouseButtons button)
+    {
+        if (_chkStructureMode.Checked) return false;   // structure mode handled by caller
+
+        // Ctrl+left click inspects the tile under the cursor (non-destructive).
+        if (button == MouseButtons.Left && (Control.ModifierKeys & Keys.Control) != 0)
+        {
+            InspectActiveTile(x, y);
+            return true;
+        }
+
+        bool erase = button == MouseButtons.Right;
+        if (button != MouseButtons.Left && button != MouseButtons.Right) return true;
+
+        switch (_activeTool)
+        {
+            case MapTool.Paint:
+                if (!erase && !HasPaintValue()) return true;
+                PushUndo();
+                _dragging = true;
+                _dragErase = erase;
+                PaintCell(x, y, erase);
+                RedrawMap();
+                break;
+
+            case MapTool.Fill:
+                if (!erase && !HasPaintValue()) return true;
+                PushUndo();
+                FillLayer(x, y, erase);
+                RedrawMap();
+                break;
+
+            case MapTool.Rectangle:
+            case MapTool.Line:
+                if (!erase && !HasPaintValue()) return true;
+                _dragging = true;
+                _dragErase = erase;
+                _dragStartX = _dragCurX = x;
+                _dragStartY = _dragCurY = y;
+                RedrawMap();   // shows the (degenerate) preview
+                break;
+        }
+
+        return true;
+    }
+
+    private void MapGrid_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (!_dragging) return;
+
+        int x = Math.Clamp(e.X / MapCellSize, 0, MapCells - 1);
+        int y = Math.Clamp(e.Y / MapCellSize, 0, MapCells - 1);
+
+        if (_activeTool == MapTool.Paint)
+        {
+            if (x == _dragCurX && y == _dragCurY) return;   // same cell — skip
+            _dragCurX = x;
+            _dragCurY = y;
+            PaintCell(x, y, _dragErase);
+            RedrawMap();
+        }
+        else if (_activeTool == MapTool.Rectangle || _activeTool == MapTool.Line)
+        {
+            _dragCurX = x;
+            _dragCurY = y;
+            RedrawMap();   // rubber-band preview drawn by RedrawMap
+        }
+    }
+
+    private void MapGrid_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+
+        if (_activeTool == MapTool.Rectangle)
+        {
+            PushUndo();
+            ApplyRect(_dragStartX, _dragStartY, _dragCurX, _dragCurY, _dragErase);
+        }
+        else if (_activeTool == MapTool.Line)
+        {
+            PushUndo();
+            ApplyLine(_dragStartX, _dragStartY, _dragCurX, _dragCurY, _dragErase);
+        }
+        // Paint already committed continuously; undo was pushed on mouse-down.
+
+        RedrawMap();
+        UpdateUndoButtons();
+    }
+
+    private void InspectActiveTile(int x, int y)
+    {
+        if (x < 0 || x >= MapCells || y < 0 || y >= MapCells) return;
+        if (!_inMap[x, y]) return;
+
+        ushort idx = ActiveLayerValueAt(x, y);
+        if (_activeLayer == MapLayer.Collision || idx == 0) return;
+        ShowTileDialog(idx, x, y);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Painting primitives (operate on the active layer)
+    // ═══════════════════════════════════════════════════════
+
+    private bool HasPaintValue()
+    {
+        // Ground/decoration need a selected tile; collision always paints "blocked".
+        return _activeLayer == MapLayer.Collision || _selectedTileIndex != 0;
+    }
+
+    private ushort PaintValue(bool erase)
+    {
+        if (erase) return 0;
+        return _activeLayer == MapLayer.Collision ? (ushort)1 : (ushort)_selectedTileIndex;
+    }
+
+    private ushort[,] ActiveArray()
+    {
+        return _activeLayer switch
+        {
+            MapLayer.Ground => _mapData,
+            MapLayer.Decoration => _decoData,
+            _ => _collisionData
+        };
+    }
+
+    private ushort ActiveLayerValueAt(int x, int y) => ActiveArray()[x, y];
+
+    private void PaintCell(int x, int y, bool erase)
+    {
+        if (x < 0 || x >= MapCells || y < 0 || y >= MapCells) return;
+        if (!_inMap[x, y]) return;   // never paint outside the playable map
+        ActiveArray()[x, y] = PaintValue(erase);
+    }
+
+    private void ApplyRect(int x1, int y1, int x2, int y2, bool erase)
+    {
+        int minX = Math.Min(x1, x2), maxX = Math.Max(x1, x2);
+        int minY = Math.Min(y1, y2), maxY = Math.Max(y1, y2);
+        ushort v = PaintValue(erase);
+
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                if (x >= 0 && x < MapCells && y >= 0 && y < MapCells && _inMap[x, y])
+                {
+                    ActiveArray()[x, y] = v;
+                }
+            }
+        }
+    }
+
+    private void ApplyLine(int x1, int y1, int x2, int y2, bool erase)
+    {
+        ushort v = PaintValue(erase);
+        ushort[,] arr = ActiveArray();
+
+        // Bresenham
+        int dx = Math.Abs(x2 - x1), dy = Math.Abs(y2 - y1);
+        int sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+        int err = dx - dy;
+        int x = x1, y = y1;
+
+        while (true)
+        {
+            if (x >= 0 && x < MapCells && y >= 0 && y < MapCells && _inMap[x, y])
+            {
+                arr[x, y] = v;
+            }
+            if (x == x2 && y == y2) break;
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+        }
+    }
+
+    /// <summary>4-connected flood fill on the active layer, bounded by valid cells.</summary>
+    private void FillLayer(int startX, int startY, bool erase)
+    {
+        if (startX < 0 || startX >= MapCells || startY < 0 || startY >= MapCells) return;
+        if (!_inMap[startX, startY]) return;
+
+        ushort[,] arr = ActiveArray();
+        ushort source = arr[startX, startY];
+        ushort target = PaintValue(erase);
+        if (source == target) return;
+
+        Queue<(int x, int y)> queue = new();
+        queue.Enqueue((startX, startY));
+        arr[startX, startY] = target;
+
+        while (queue.Count > 0)
+        {
+            (int x, int y) = queue.Dequeue();
+            TryFill(queue, arr, x - 1, y, source, target);
+            TryFill(queue, arr, x + 1, y, source, target);
+            TryFill(queue, arr, x, y - 1, source, target);
+            TryFill(queue, arr, x, y + 1, source, target);
+        }
+    }
+
+    private void TryFill(Queue<(int x, int y)> queue, ushort[,] arr, int nx, int ny, ushort source, ushort target)
+    {
+        if (nx < 0 || nx >= MapCells || ny < 0 || ny >= MapCells) return;
+        if (!_inMap[nx, ny]) return;
+        if (arr[nx, ny] != source) return;
+        arr[nx, ny] = target;
+        queue.Enqueue((nx, ny));
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Rendering hooks (called from RedrawMap)
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>Draws decoration thumbnails and the collision tint for one cell.</summary>
+    private void DrawCellOverlays(Graphics g, int x, int y, int px, int py)
+    {
+        int deco = _decoData[x, y];
+        if (deco != 0)
+        {
+            TileInfo? t = FindTileByIndex(deco);
+            if (t?.MiniThumb != null)
+            {
+                g.DrawImage(t.MiniThumb, px, py, MapCellSize, MapCellSize);
+            }
+        }
+
+        if (_collisionData[x, y] != 0)
+        {
+            using SolidBrush tint = new(Color.FromArgb(95, 210, 30, 30));
+            g.FillRectangle(tint, px, py, MapCellSize, MapCellSize);
+        }
+    }
+
+    /// <summary>Draws the rubber-band preview for the rectangle / line tools.</summary>
+    private void DrawToolPreview(Graphics g)
+    {
+        if (!_dragging) return;
+        if (_activeTool != MapTool.Rectangle && _activeTool != MapTool.Line) return;
+
+        using Pen pen = new(_dragErase ? Color.FromArgb(220, 60, 60) : Color.FromArgb(40, 120, 230), 2f)
+        {
+            DashStyle = DashStyle.Dash
+        };
+
+        if (_activeTool == MapTool.Rectangle)
+        {
+            int minX = Math.Min(_dragStartX, _dragCurX), maxX = Math.Max(_dragStartX, _dragCurX);
+            int minY = Math.Min(_dragStartY, _dragCurY), maxY = Math.Max(_dragStartY, _dragCurY);
+            int rx = minX * MapCellSize;
+            int ry = minY * MapCellSize;
+            int rw = (maxX - minX + 1) * MapCellSize;
+            int rh = (maxY - minY + 1) * MapCellSize;
+            g.DrawRectangle(pen, rx, ry, rw - 1, rh - 1);
+        }
+        else
+        {
+            int half = MapCellSize / 2;
+            g.DrawLine(pen,
+                _dragStartX * MapCellSize + half, _dragStartY * MapCellSize + half,
+                _dragCurX * MapCellSize + half, _dragCurY * MapCellSize + half);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Undo / redo
+    // ═══════════════════════════════════════════════════════
+
+    private MapSnapshot CaptureState()
+    {
+        return new MapSnapshot
+        {
+            Ground = (ushort[,])_mapData.Clone(),
+            Deco = (ushort[,])_decoData.Clone(),
+            Collision = (ushort[,])_collisionData.Clone(),
+            Valid = (bool[,])_inMap.Clone()
+        };
+    }
+
+    private void RestoreInto(MapSnapshot s)
+    {
+        int n = MapCells * MapCells;
+        Array.Copy(s.Ground, _mapData, n);
+        Array.Copy(s.Deco, _decoData, n);
+        Array.Copy(s.Collision, _collisionData, n);
+        Array.Copy(s.Valid, _inMap, n);
+    }
+
+    /// <summary>Records current state for undo.  Call BEFORE a mutating edit.</summary>
+    private void PushUndo()
+    {
+        _undo.Add(CaptureState());
+        if (_undo.Count > UndoLimit) _undo.RemoveAt(0);
+        _redo.Clear();
+        UpdateUndoButtons();
+    }
+
+    private void Undo()
+    {
+        if (_undo.Count == 0) return;
+        MapSnapshot current = CaptureState();
+        MapSnapshot prev = _undo[^1];
+        _undo.RemoveAt(_undo.Count - 1);
+        _redo.Add(current);
+        RestoreInto(prev);
+        RedrawMap();
+        UpdateUndoButtons();
+    }
+
+    private void Redo()
+    {
+        if (_redo.Count == 0) return;
+        MapSnapshot current = CaptureState();
+        MapSnapshot next = _redo[^1];
+        _redo.RemoveAt(_redo.Count - 1);
+        _undo.Add(current);
+        RestoreInto(next);
+        RedrawMap();
+        UpdateUndoButtons();
+    }
+
+    private void UpdateUndoButtons()
+    {
+        if (_btnUndo != null) _btnUndo.Enabled = _undo.Count > 0;
+        if (_btnRedo != null) _btnRedo.Enabled = _redo.Count > 0;
+    }
+}
