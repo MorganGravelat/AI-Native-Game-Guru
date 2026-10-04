@@ -1,6 +1,7 @@
 #include "TileMapRenderer.h"
 
 #include "MapArrays.h"
+#include "MapBoundaryGenerator.h"
 
 // Unreal components/assets
 #include "Components/SceneComponent.h"
@@ -28,6 +29,16 @@ ATileMapRenderer::ATileMapRenderer()
     if (PlaneMeshFinder.Succeeded())
     {
         TilePlaneMesh = PlaneMeshFinder.Object;
+    }
+
+    // Load Unreal's built-in 100x100x100 cube mesh for boundary walls.
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(
+        TEXT("/Engine/BasicShapes/Cube.Cube")
+    );
+
+    if (CubeMeshFinder.Succeeded())
+    {
+        BoundaryCubeMesh = CubeMeshFinder.Object;
     }
 
     // Load the tile material we created in Content/Materials.
@@ -253,4 +264,18 @@ void ATileMapRenderer::BuildMap()
         TEXT("TileMapRenderer finished. Created %d tiles."),
         TilesCreated
     );
+
+    if (bGenerateBoundaries)
+    {
+        FMapBoundaryGenerator::GenerateBoundary(
+            this,
+            SceneRoot,
+            MapData,
+            BoundaryCubeMesh,
+            BoundaryMaterial,
+            TileSize,
+            WallHeight,
+            WallThickness
+        );
+    }
 }
