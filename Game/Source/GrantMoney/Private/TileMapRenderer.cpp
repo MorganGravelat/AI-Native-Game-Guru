@@ -1,8 +1,6 @@
 #include "TileMapRenderer.h"
 
-// TileGen generated files
-#include "Maps/Map1_1.h"
-#include "Maps/Map1_1_TileAssets.h"
+#include "MapArrays.h"
 
 // Unreal components/assets
 #include "Components/SceneComponent.h"
@@ -76,24 +74,55 @@ void ATileMapRenderer::BuildMap()
         return;
     }
 
+    // Ask MapArrays for the selected level.
+    FGrantMoneyMapData MapData;
+
+    if (!FMapArrays::GetMap(LevelToRender, MapData))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("TileMapRenderer: Failed to load level %d. It is not registered in MapArrays."),
+            LevelToRender
+        );
+
+        return;
+    }
+
+    if (!MapData.IsValid())
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("TileMapRenderer: MapArrays returned invalid data for level %d (Width=%d Height=%d)."),
+            LevelToRender,
+            MapData.Width,
+            MapData.Height
+        );
+
+        return;
+    }
+
     // One instanced-mesh component will be created for each tile type.
     TMap<int32, UHierarchicalInstancedStaticMeshComponent*> TileGroups;
 
+    // Tile IDs with no usable asset path; logged once per ID, not per cell.
+    TSet<int32> InvalidTileIds;
+
     int32 TilesCreated = 0;
 
-    // TileGen maps are 64 x 64.
     // The generated data uses [x][y].
-    for (int32 X = 0; X < 64; ++X)
+    for (int32 X = 0; X < MapData.Width; ++X)
     {
-        for (int32 Y = 0; Y < 64; ++Y)
+        for (int32 Y = 0; Y < MapData.Height; ++Y)
         {
             // Skip cells that TileGen says are not part of the map.
-            if (Map1_1_Valid[X][Y] == 0)
+            if (MapData.Valid[X][Y] == 0)
             {
                 continue;
             }
 
-            const int32 TileId = Map1_1[X][Y];
+            const int32 TileId = MapData.Ground[X][Y];
 
             // Tile ID 0 means no ground tile.
             if (TileId == 0)
@@ -101,18 +130,8 @@ void ATileMapRenderer::BuildMap()
                 continue;
             }
 
-            // Make sure the Tile ID exists in the generated lookup table.
-            if (TileId < 0 || TileId >= Map1_1_TileAssetCount)
+            if (InvalidTileIds.Contains(TileId))
             {
-                UE_LOG(
-                    LogTemp,
-                    Warning,
-                    TEXT("Invalid Tile ID %d at X=%d Y=%d"),
-                    TileId,
-                    X,
-                    Y
-                );
-
                 continue;
             }
 
@@ -126,6 +145,26 @@ void ATileMapRenderer::BuildMap()
             }
             else
             {
+                // Find the texture path TileGen generated for this level.
+                const TCHAR* TexturePath =
+                    FMapArrays::GetTileAsset(LevelToRender, TileId);
+
+                if (!TexturePath)
+                {
+                    UE_LOG(
+                        LogTemp,
+                        Warning,
+                        TEXT("Level %d: no asset for Tile ID %d (first seen at X=%d Y=%d). Skipping all tiles with this ID."),
+                        LevelToRender,
+                        TileId,
+                        X,
+                        Y
+                    );
+
+                    InvalidTileIds.Add(TileId);
+                    continue;
+                }
+
                 // First time we have encountered this Tile ID.
                 // Create an instanced mesh component for it.
                 const FName ComponentName(
@@ -148,48 +187,42 @@ void ATileMapRenderer::BuildMap()
 
                 TileGroup->RegisterComponent();
 
-                // Find the texture path TileGen generated.
-                const TCHAR* TexturePath = Map1_1_TileAssets[TileId];
+                UTexture2D* TileTexture =
+                    LoadObject<UTexture2D>(
+                        nullptr,
+                        TexturePath
+                    );
 
-                if (TexturePath && TexturePath[0] != '\0')
+                if (TileTexture)
                 {
-                    UTexture2D* TileTexture =
-                        LoadObject<UTexture2D>(
-                            nullptr,
-                            TexturePath
+                    UMaterialInstanceDynamic* DynamicMaterial =
+                        UMaterialInstanceDynamic::Create(
+                            TileBaseMaterial,
+                            this
                         );
 
-                    if (TileTexture)
+                    if (DynamicMaterial)
                     {
-                        UMaterialInstanceDynamic* DynamicMaterial =
-                            UMaterialInstanceDynamic::Create(
-                                TileBaseMaterial,
-                                this
-                            );
+                        DynamicMaterial->SetTextureParameterValue(
+                            TEXT("TileTexture"),
+                            TileTexture
+                        );
 
-                        if (DynamicMaterial)
-                        {
-                            DynamicMaterial->SetTextureParameterValue(
-                                TEXT("TileTexture"),
-                                TileTexture
-                            );
-
-                            TileGroup->SetMaterial(
-                                0,
-                                DynamicMaterial
-                            );
-                        }
-                    }
-                    else
-                    {
-                        UE_LOG(
-                            LogTemp,
-                            Warning,
-                            TEXT("Could not load texture for Tile ID %d: %s"),
-                            TileId,
-                            TexturePath
+                        TileGroup->SetMaterial(
+                            0,
+                            DynamicMaterial
                         );
                     }
+                }
+                else
+                {
+                    UE_LOG(
+                        LogTemp,
+                        Warning,
+                        TEXT("Could not load texture for Tile ID %d: %s"),
+                        TileId,
+                        TexturePath
+                    );
                 }
 
                 TileGroups.Add(TileId, TileGroup);
