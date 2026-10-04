@@ -16,6 +16,14 @@ class GRANTMONEY_API ATileMapRenderer : public AActor
 public:
     ATileMapRenderer();
 
+    // Which registered map (see MapArrays.cpp) to build when gameplay starts.
+    UPROPERTY(
+        EditAnywhere,
+        Category = "Map",
+        meta = (ClampMin = "1")
+    )
+    int32 LevelToRender = 1;
+
 protected:
     virtual void BeginPlay() override;
 
@@ -33,7 +41,7 @@ private:
     UPROPERTY()
     UMaterialInterface* TileBaseMaterial;
 
-    // Builds the 64x64 TileGen map.
+    // Builds the TileGen map selected by LevelToRender.
     void BuildMap();
 
     // Unreal uses centimeters.
