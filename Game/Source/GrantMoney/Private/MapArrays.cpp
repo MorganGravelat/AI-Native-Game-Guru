@@ -1,8 +1,13 @@
 #include "MapArrays.h"
 
 // TileGen generated files. Generated names must only be referenced in this file.
+
+// Level 1
 #include "Maps/Map1_1.h"
 #include "Maps/Map1_1_TileAssets.h"
+// Level 2
+#include "Maps/Map1_2.h"
+#include "Maps/Map1_2_TileAssets.h"
 
 namespace
 {
@@ -21,6 +26,7 @@ namespace
         static const FRegisteredMap RegisteredMaps[] =
         {
             { 1, Map1_1, Map1_1_Valid, Map1_1_TileAssets, Map1_1_TileAssetCount },
+            { 2, Map1_2, Map1_2_Valid, Map1_2_TileAssets, Map1_2_TileAssetCount },
         };
 
         for (const FRegisteredMap& Entry : RegisteredMaps)

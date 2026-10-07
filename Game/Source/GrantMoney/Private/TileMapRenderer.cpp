@@ -1,6 +1,7 @@
 #include "TileMapRenderer.h"
 
 #include "MapArrays.h"
+#include "MapBoundaryGenerator.h"
 
 // Unreal components/assets
 #include "Components/SceneComponent.h"
@@ -28,6 +29,16 @@ ATileMapRenderer::ATileMapRenderer()
     if (PlaneMeshFinder.Succeeded())
     {
         TilePlaneMesh = PlaneMeshFinder.Object;
+    }
+
+    // Load Unreal's built-in 100x100x100 cube mesh for boundary walls.
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(
+        TEXT("/Engine/BasicShapes/Cube.Cube")
+    );
+
+    if (CubeMeshFinder.Succeeded())
+    {
+        BoundaryCubeMesh = CubeMeshFinder.Object;
     }
 
     // Load the tile material we created in Content/Materials.
@@ -105,6 +116,10 @@ void ATileMapRenderer::BuildMap()
 
     // One instanced-mesh component will be created for each tile type.
     TMap<int32, UHierarchicalInstancedStaticMeshComponent*> TileGroups;
+
+    // Instance transforms are collected per tile type and added in one batch,
+    // so each HISM component builds its spatial tree once instead of per tile.
+    TMap<int32, TArray<FTransform>> PendingTransforms;
 
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
@@ -241,9 +256,18 @@ void ATileMapRenderer::BuildMap()
                 FVector::OneVector
             );
 
-            TileGroup->AddInstance(TileTransform);
+            PendingTransforms.FindOrAdd(TileId).Add(TileTransform);
 
             ++TilesCreated;
+        }
+    }
+
+    for (const TPair<int32, TArray<FTransform>>& Pending : PendingTransforms)
+    {
+        if (UHierarchicalInstancedStaticMeshComponent* const* Group =
+            TileGroups.Find(Pending.Key))
+        {
+            (*Group)->AddInstances(Pending.Value, false);
         }
     }
 
@@ -253,4 +277,18 @@ void ATileMapRenderer::BuildMap()
         TEXT("TileMapRenderer finished. Created %d tiles."),
         TilesCreated
     );
+
+    if (bGenerateBoundaries)
+    {
+        FMapBoundaryGenerator::GenerateBoundary(
+            this,
+            SceneRoot,
+            MapData,
+            BoundaryCubeMesh,
+            BoundaryMaterial,
+            TileSize,
+            WallHeight,
+            WallThickness
+        );
+    }
 }
