@@ -77,3 +77,11 @@ venv/
 *.secret
 *.key
 *.pem
+
+# VS Code local workspace/settings
+.vscode/
+**/.vscode/
+*.code-workspace
+
+# Editor/tool-specific ignore files if not intentionally shared
+**/.ignore
