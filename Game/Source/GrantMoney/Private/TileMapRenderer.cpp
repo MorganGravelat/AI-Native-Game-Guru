@@ -117,6 +117,10 @@ void ATileMapRenderer::BuildMap()
     // One instanced-mesh component will be created for each tile type.
     TMap<int32, UHierarchicalInstancedStaticMeshComponent*> TileGroups;
 
+    // Instance transforms are collected per tile type and added in one batch,
+    // so each HISM component builds its spatial tree once instead of per tile.
+    TMap<int32, TArray<FTransform>> PendingTransforms;
+
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
 
@@ -252,9 +256,18 @@ void ATileMapRenderer::BuildMap()
                 FVector::OneVector
             );
 
-            TileGroup->AddInstance(TileTransform);
+            PendingTransforms.FindOrAdd(TileId).Add(TileTransform);
 
             ++TilesCreated;
+        }
+    }
+
+    for (const TPair<int32, TArray<FTransform>>& Pending : PendingTransforms)
+    {
+        if (UHierarchicalInstancedStaticMeshComponent* const* Group =
+            TileGroups.Find(Pending.Key))
+        {
+            (*Group)->AddInstances(Pending.Value, false);
         }
     }
 

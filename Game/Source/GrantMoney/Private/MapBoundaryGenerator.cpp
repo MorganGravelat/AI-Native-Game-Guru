@@ -165,10 +165,8 @@ int32 FMapBoundaryGenerator::GenerateBoundary(
 
     Walls->RegisterComponent();
 
-    for (const FTransform& WallTransform : WallTransforms)
-    {
-        Walls->AddInstance(WallTransform);
-    }
+    // One batch call so the spatial tree is built once, not per wall.
+    Walls->AddInstances(WallTransforms, false);
 
     UE_LOG(
         LogTemp,
