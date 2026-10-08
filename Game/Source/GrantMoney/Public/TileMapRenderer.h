@@ -60,19 +60,19 @@ private:
 
     // Root component that the generated tile components attach to.
     UPROPERTY()
-    USceneComponent* SceneRoot;
+    TObjectPtr<USceneComponent> SceneRoot;
 
     // A simple flat Unreal plane used for every map tile.
     UPROPERTY()
-    UStaticMesh* TilePlaneMesh;
+    TObjectPtr<UStaticMesh> TilePlaneMesh;
 
     // Built-in cube used for boundary wall segments.
     UPROPERTY()
-    UStaticMesh* BoundaryCubeMesh;
+    TObjectPtr<UStaticMesh> BoundaryCubeMesh;
 
     // Base material containing the "TileTexture" parameter.
     UPROPERTY()
-    UMaterialInterface* TileBaseMaterial;
+    TObjectPtr<UMaterialInterface> TileBaseMaterial;
 
     // Builds the TileGen map selected by LevelToRender.
     void BuildMap();
