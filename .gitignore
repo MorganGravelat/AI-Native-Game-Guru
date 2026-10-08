@@ -83,5 +83,14 @@ venv/
 **/.vscode/
 *.code-workspace
 
+# ==========================================
+# JetBrains Rider / IntelliJ Specific Files
+# ==========================================
+.idea/
+*.sln.DotSettings.user
+
+# Optional: If you use Rider's built-in compiler outputs or profiling
+Build/
+
 # Editor/tool-specific ignore files if not intentionally shared
 **/.ignore
