@@ -83,6 +83,9 @@ venv/
 **/.vscode/
 *.code-workspace
 
+# Editor/tool-specific ignore files if not intentionally shared
+**/.ignore
+
 # ==========================================
 # JetBrains Rider / IntelliJ Specific Files
 # ==========================================
@@ -91,6 +94,3 @@ venv/
 
 # Optional: If you use Rider's built-in compiler outputs or profiling
 Build/
-
-# Editor/tool-specific ignore files if not intentionally shared
-**/.ignore
