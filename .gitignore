@@ -77,3 +77,20 @@ venv/
 *.secret
 *.key
 *.pem
+
+# VS Code local workspace/settings
+.vscode/
+**/.vscode/
+*.code-workspace
+
+# Editor/tool-specific ignore files if not intentionally shared
+**/.ignore
+
+# ==========================================
+# JetBrains Rider / IntelliJ Specific Files
+# ==========================================
+.idea/
+*.sln.DotSettings.user
+
+# Optional: If you use Rider's built-in compiler outputs or profiling
+Build/

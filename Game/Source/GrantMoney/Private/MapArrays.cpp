@@ -1,8 +1,11 @@
 #include "MapArrays.h"
 
 // TileGen generated files. Generated names must only be referenced in this file.
+
+// Level 1
 #include "Maps/Map1_1.h"
 #include "Maps/Map1_1_TileAssets.h"
+// Level 2
 #include "Maps/Map1_2.h"
 #include "Maps/Map1_2_TileAssets.h"
 

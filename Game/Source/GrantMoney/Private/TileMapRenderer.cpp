@@ -1,6 +1,7 @@
 #include "TileMapRenderer.h"
 
 #include "MapArrays.h"
+#include "MapBoundaryGenerator.h"
 
 // Unreal components/assets
 #include "Components/SceneComponent.h"
@@ -11,10 +12,39 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
+#if WITH_EDITOR
+#include "CoreGlobals.h"
+#include "Engine/World.h"
+#endif
+
+const FName ATileMapRenderer::GeneratedComponentTag(TEXT("TileMapRenderer.Generated"));
+
+namespace
+{
+    // Generated components are rebuilt from MapArrays whenever needed, so
+    // they must never be saved into the level, copied with the actor, or
+    // duplicated into PIE (BeginPlay builds its own copy there).
+    void MarkAsGenerated(UActorComponent* Component)
+    {
+        Component->SetFlags(
+            RF_Transient | RF_DuplicateTransient | RF_TextExportTransient
+        );
+
+        Component->ComponentTags.AddUnique(ATileMapRenderer::GeneratedComponentTag);
+    }
+}
+
 ATileMapRenderer::ATileMapRenderer()
 {
     // Our tile map does not need to execute code every frame.
     PrimaryActorTick.bCanEverTick = false;
+
+#if WITH_EDITORONLY_DATA
+    // Generated components are attached to the root and move with the actor,
+    // so there is no need to rebuild the whole map every frame of a drag.
+    // The construction script still runs once when the drag finishes.
+    bRunConstructionScriptOnDrag = false;
+#endif
 
     // Create a root component for this Actor.
     SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
@@ -28,6 +58,16 @@ ATileMapRenderer::ATileMapRenderer()
     if (PlaneMeshFinder.Succeeded())
     {
         TilePlaneMesh = PlaneMeshFinder.Object;
+    }
+
+    // Load Unreal's built-in 100x100x100 cube mesh for boundary walls.
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(
+        TEXT("/Engine/BasicShapes/Cube.Cube")
+    );
+
+    if (CubeMeshFinder.Succeeded())
+    {
+        BoundaryCubeMesh = CubeMeshFinder.Object;
     }
 
     // Load the tile material we created in Content/Materials.
@@ -47,7 +87,138 @@ void ATileMapRenderer::BeginPlay()
 
     UE_LOG(LogTemp, Warning, TEXT("TileMapRenderer starting..."));
 
+    // BeginPlay only runs in game worlds. Rebuild rather than build so any
+    // generated component that reached this actor is cleared first.
+    RebuildMap();
+}
+
+void ATileMapRenderer::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+
+#if WITH_EDITOR
+    // Runs when the actor is placed, loaded, moved, or edited in the editor.
+    // Game worlds are left to BeginPlay so an actor spawned at runtime is
+    // not built twice.
+    if (!IsEditorPreviewWorld())
+    {
+        return;
+    }
+
+    bConstructedDuringEdit = true;
+
+    if (bPreviewInEditor)
+    {
+        RebuildMap();
+    }
+    else
+    {
+        ClearGeneratedComponents();
+    }
+#endif
+}
+
+#if WITH_EDITOR
+void ATileMapRenderer::PostEditChangeProperty(
+    FPropertyChangedEvent& PropertyChangedEvent)
+{
+    bConstructedDuringEdit = false;
+
+    // AActor reruns the construction script here (including during slider
+    // drags), which calls OnConstruction and refreshes the preview.
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    if (bConstructedDuringEdit || !IsEditorPreviewWorld())
+    {
+        return;
+    }
+
+    // Fallback for edits where the engine skipped the construction script.
+    const FName PropertyName = PropertyChangedEvent.GetMemberPropertyName();
+
+    const bool bAffectsMap =
+        PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, LevelToRender)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bGenerateBoundaries)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallHeight)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallThickness)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, BoundaryMaterial)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bPreviewInEditor);
+
+    if (!bAffectsMap)
+    {
+        return;
+    }
+
+    if (bPreviewInEditor)
+    {
+        RebuildMap();
+    }
+    else
+    {
+        ClearGeneratedComponents();
+    }
+}
+
+void ATileMapRenderer::PostEditUndo()
+{
+    bConstructedDuringEdit = false;
+
+    Super::PostEditUndo();
+
+    // Undo restores the property values; make the preview match them.
+    if (!bConstructedDuringEdit && IsEditorPreviewWorld())
+    {
+        if (bPreviewInEditor)
+        {
+            RebuildMap();
+        }
+        else
+        {
+            ClearGeneratedComponents();
+        }
+    }
+}
+
+bool ATileMapRenderer::IsEditorPreviewWorld() const
+{
+    // Skip the class default object and commandlets (cooking, resaving):
+    // the preview is only for a person looking at a viewport.
+    if (!GIsEditor || IsTemplate() || IsRunningCommandlet())
+    {
+        return false;
+    }
+
+    const UWorld* World = GetWorld();
+
+    return World && !World->IsGameWorld();
+}
+#endif
+
+void ATileMapRenderer::RebuildMap()
+{
+    ClearGeneratedComponents();
     BuildMap();
+}
+
+void ATileMapRenderer::ClearGeneratedComponents()
+{
+    // Find by tag rather than a cached list: the tag survives any copy of
+    // the actor, so stale components are always caught.
+    TArray<UActorComponent*> Generated;
+
+    for (UActorComponent* Component : GetComponents())
+    {
+        if (Component && Component->ComponentHasTag(GeneratedComponentTag))
+        {
+            Generated.Add(Component);
+        }
+    }
+
+    for (UActorComponent* Component : Generated)
+    {
+        RemoveInstanceComponent(Component);
+        Component->DestroyComponent();
+    }
 }
 
 void ATileMapRenderer::BuildMap()
@@ -105,6 +276,10 @@ void ATileMapRenderer::BuildMap()
 
     // One instanced-mesh component will be created for each tile type.
     TMap<int32, UHierarchicalInstancedStaticMeshComponent*> TileGroups;
+
+    // Instance transforms are collected per tile type and added in one batch,
+    // so each HISM component builds its spatial tree once instead of per tile.
+    TMap<int32, TArray<FTransform>> PendingTransforms;
 
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
@@ -167,7 +342,11 @@ void ATileMapRenderer::BuildMap()
 
                 // First time we have encountered this Tile ID.
                 // Create an instanced mesh component for it.
-                const FName ComponentName(
+                // A destroyed group keeps its name until garbage collection,
+                // so editor rebuilds need a unique name to avoid a clash.
+                const FName ComponentName = MakeUniqueObjectName(
+                    this,
+                    UHierarchicalInstancedStaticMeshComponent::StaticClass(),
                     *FString::Printf(TEXT("TileGroup_%d"), TileId)
                 );
 
@@ -177,6 +356,7 @@ void ATileMapRenderer::BuildMap()
                         ComponentName
                     );
 
+                MarkAsGenerated(TileGroup);
                 AddInstanceComponent(TileGroup);
 
                 TileGroup->SetupAttachment(SceneRoot);
@@ -203,6 +383,9 @@ void ATileMapRenderer::BuildMap()
 
                     if (DynamicMaterial)
                     {
+                        // Only the transient tile group uses it; never save it.
+                        DynamicMaterial->SetFlags(RF_Transient);
+
                         DynamicMaterial->SetTextureParameterValue(
                             TEXT("TileTexture"),
                             TileTexture
@@ -241,9 +424,18 @@ void ATileMapRenderer::BuildMap()
                 FVector::OneVector
             );
 
-            TileGroup->AddInstance(TileTransform);
+            PendingTransforms.FindOrAdd(TileId).Add(TileTransform);
 
             ++TilesCreated;
+        }
+    }
+
+    for (const TPair<int32, TArray<FTransform>>& Pending : PendingTransforms)
+    {
+        if (UHierarchicalInstancedStaticMeshComponent* const* Group =
+            TileGroups.Find(Pending.Key))
+        {
+            (*Group)->AddInstances(Pending.Value, false);
         }
     }
 
@@ -253,4 +445,19 @@ void ATileMapRenderer::BuildMap()
         TEXT("TileMapRenderer finished. Created %d tiles."),
         TilesCreated
     );
+
+    if (bGenerateBoundaries)
+    {
+        FMapBoundaryGenerator::GenerateBoundary(
+            this,
+            SceneRoot,
+            MapData,
+            BoundaryCubeMesh,
+            BoundaryMaterial,
+            TileSize,
+            WallHeight,
+            WallThickness,
+            GeneratedComponentTag
+        );
+    }
 }
