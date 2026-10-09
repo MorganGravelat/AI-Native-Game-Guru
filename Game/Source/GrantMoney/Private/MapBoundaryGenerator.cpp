@@ -20,7 +20,8 @@ int32 FMapBoundaryGenerator::GenerateBoundary(
     UMaterialInterface* BoundaryMaterial,
     float TileSize,
     float WallHeight,
-    float WallThickness)
+    float WallThickness,
+    FName GeneratedTag)
 {
     if (!Owner || !ParentComponent || !BoundaryMesh)
     {
@@ -133,10 +134,18 @@ int32 FMapBoundaryGenerator::GenerateBoundary(
         }
     }
 
+    // A destroyed wall component keeps its name until garbage collection,
+    // so regenerating needs a unique name to avoid a clash.
+    const FName ComponentName = MakeUniqueObjectName(
+        Owner,
+        UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+        TEXT("BoundaryWalls")
+    );
+
     UHierarchicalInstancedStaticMeshComponent* Walls =
         NewObject<UHierarchicalInstancedStaticMeshComponent>(
             Owner,
-            TEXT("BoundaryWalls")
+            ComponentName
         );
 
     if (!Walls)
@@ -148,6 +157,15 @@ int32 FMapBoundaryGenerator::GenerateBoundary(
         );
 
         return 0;
+    }
+
+    if (!GeneratedTag.IsNone())
+    {
+        Walls->SetFlags(
+            RF_Transient | RF_DuplicateTransient | RF_TextExportTransient
+        );
+
+        Walls->ComponentTags.AddUnique(GeneratedTag);
     }
 
     Owner->AddInstanceComponent(Walls);

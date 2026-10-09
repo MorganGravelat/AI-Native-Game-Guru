@@ -20,6 +20,9 @@ public:
     // ground tiles. BoundaryMesh is expected to be the 100x100x100 engine
     // cube. BoundaryMaterial may be null (the mesh's default material is used);
     // a custom material must enable "Used with Instanced Static Meshes".
+    // If GeneratedTag is set, the component is added to ComponentTags and
+    // marked transient (not saved, copied, or duplicated into PIE) so the
+    // owner can find and destroy it before regenerating.
     // Returns the number of wall instances created (0 on invalid input).
     static int32 GenerateBoundary(
         AActor* Owner,
@@ -29,6 +32,7 @@ public:
         UMaterialInterface* BoundaryMaterial,
         float TileSize,
         float WallHeight,
-        float WallThickness
+        float WallThickness,
+        FName GeneratedTag = NAME_None
     );
 };
