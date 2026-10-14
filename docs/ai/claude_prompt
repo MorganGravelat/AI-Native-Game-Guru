@@ -1,0 +1,20 @@
+Work on Jira GMS-XXX.
+
+Follow CLAUDE.md and the repository permission rules.
+
+Before changing anything:
+1. inspect only the files directly relevant to this task;
+2. list the files you think will need modification;
+3. do not recursively scan the repository;
+4. do not read binaries, Unreal generated folders, media, or unrelated documentation;
+5. keep a running implementation log suitable for course documentation.
+
+As we work, maintain:
+- numbered implementation steps;
+- useful AI prompts;
+- mistakes/corrections;
+- files changed;
+- verification performed;
+- suggested screenshot/recording for each meaningful step.
+
+Do not commit or push unless I explicitly tell you to.
