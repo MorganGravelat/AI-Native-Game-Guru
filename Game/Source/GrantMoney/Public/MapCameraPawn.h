@@ -42,6 +42,12 @@ public:
 	void SetFollowTarget(AActor* NewTarget);
 	AActor* GetFollowTarget() const { return FollowTarget; }
 
+	// Camera controls. Used by the input handlers below and by the PlayerController
+	// when this pawn is the view target but is not possessed.
+	void AddCameraYaw(float Value);
+	void AddCameraPitch(float Value);
+	void AddCameraZoom(float Value);
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;

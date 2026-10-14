@@ -900,6 +900,7 @@ Nothing below has been captured yet unless noted. Numbering follows the folder s
 | `07-character-falls.mp4` (new) | 10–15 seconds with `bGenerateGroundCollision` off: the capsule falls out of the world. Reproducible, so it can be recorded at any time. |
 | `08-ground-collision-settings.png` (new) | The `TileMapRenderer` Details panel with the Collision category. |
 | `09-show-collision.png` (new) | `show Collision` with the ground slabs and the capsule standing on them. |
+| `10-gamemode-override.png` (new) | `BP_GrantMoneyGameMode` Class Defaults showing `MapCameraPawn` saved as the default pawn, and the C++ override that wins over it. |
 
 ## Voice-Over Outline
 
@@ -1207,6 +1208,149 @@ If possible, show the camera orientation changing immediately before demonstrati
 
 ---
 
+# GMS-103 – As-Built Record
+
+This section records what actually happened while implementing GMS-103. Only results the developer confirmed are marked as passed.
+
+## Deviations From the Plan
+
+| Plan | What actually happened | Why |
+|---|---|---|
+| Camera orientation "if available" | The camera's mouse turn, look and zoom had to be restored first | Since GMS-102 the character is possessed, and `AMapCameraPawn` only binds its input when possessed. The camera was static. |
+| Camera input stays on the camera pawn | `MapCameraPlayerController` binds `IA_CameraTurn`, `IA_CameraLookUp` and `IA_CameraZoom` and forwards them to the view-target camera pawn | The controller is the one input owner that is always possessed. It forwards only if the view target is not the possessed pawn, so a possessed camera pawn never double-handles input. |
+| New movement Input Action | The existing `IA_CameraMove` is reused | It is already `Axis2D` and mapped to WASD in `IMC_MapCamera`. The camera pawn is unpossessed, so there is no conflict. A dedicated `IA_PlayerMove` can come later. |
+| Camera WASD roaming | Removed in practice | WASD now moves the character. |
+| Not in the plan | A placeholder static mesh (box) was added to the character | The capsule is invisible, so movement could not be seen. It will be replaced by the skeletal mesh. |
+
+## Files Changed
+
+| File | Change |
+|---|---|
+| `Public/GrantMoneyPlayerCharacter.h`, `Private/GrantMoneyPlayerCharacter.cpp` | Adds `MoveAction` (defaults to `IA_CameraMove`), binds it in `SetupPlayerInputComponent`, and adds `HandleMove`. `HandleMove` reads the view yaw from `PlayerCameraManager->GetCameraRotation()`, uses yaw-only forward and right vectors, clamps diagonals, and calls `AddMovementInput`. `bOrientRotationToMovement` is on. Adds the `PlaceholderMesh` box (no collision). |
+| `Public/MapCameraPawn.h`, `Private/MapCameraPawn.cpp` | Adds public `AddCameraYaw`, `AddCameraPitch` and `AddCameraZoom`. The existing handlers call them, so behaviour is unchanged. |
+| `Public/MapCameraPlayerController.h`, `Private/MapCameraPlayerController.cpp` | Binds the three camera actions and forwards them to the view-target `AMapCameraPawn`. The pause binding is unchanged. A missing `IA_Pause` no longer stops the camera bindings. |
+
+Not touched: the GameMode, TileGen, `MapArrays`, `MapBoundaryGenerator`, ini files.
+
+## How Camera-Relative Movement Works
+
+```text
+IA_CameraMove (WASD, Axis2D)
+   → AGrantMoneyPlayerCharacter::HandleMove
+        → PlayerCameraManager->GetCameraRotation()   (whatever camera is the view; no camera class needed)
+        → keep yaw only
+        → AddMovementInput(forward * Y + right * X)
+```
+
+```text
+Mouse / wheel (IA_CameraTurn, IA_CameraLookUp, IA_CameraZoom)
+   → MapCameraPlayerController handlers
+        → if the view target is an unpossessed AMapCameraPawn:
+             AddCameraYaw / AddCameraPitch / AddCameraZoom
+```
+
+## Compile and Test Procedure
+
+1. Close the Unreal Editor. Build `GrantMoneyEditor` (Development Editor, Win64) in Visual Studio. Reopen `PlayGame1`.
+2. Check the assets in the Editor: `IA_CameraMove` is `Axis2D` and mapped to WASD in `IMC_MapCamera`. `IA_CameraTurn` and `IA_CameraLookUp` are `Axis1D` on the mouse. `IA_CameraZoom` is on the wheel.
+3. Press Play. The Output Log should have no `is not set` errors.
+4. Press WASD. The grey box moves and turns to face its direction of travel.
+5. Turn the camera with the mouse, then hold W. The box moves away from the camera, not along world X.
+6. Pause, then resume. The box does not move while paused and moves again after resume.
+7. Walk into a boundary wall. The box stops.
+8. Run `showdebug enhancedinput` if input seems dead. It shows the active mapping context and action values.
+
+## Verification Results
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Project compiles | Confirmed by developer | Rebuilt and ran |
+| Camera turn works again | Confirmed by developer | "I can look around now" |
+| WASD moves the character | Confirmed by developer | Capsule moved first, then the grey box |
+| Character faces its direction of travel | Confirmed by developer | Grey box turns with movement |
+| Movement is relative to the camera's yaw | Confirmed by developer | Holding left moves left relative to the camera's facing, after turning the camera |
+| Pause stops movement, resume restores it | Confirmed by developer | No movement while paused |
+| Character stops at boundary walls | Confirmed by developer | Stops cleanly on the walls |
+| Diagonal speed is not faster | Confirmed by developer | Diagonal movement is not faster than straight movement |
+| Camera look-up (pitch) and zoom | Confirmed by developer | The camera moves "in all the usual directions" |
+
+## AI Workflow Log
+
+| # | Prompt | Result |
+|---|---|---|
+| 1 | Read-only investigation for GMS-103: what Enhanced Input exists, where mapping contexts are added, whether a movement action exists, how to query the active camera's yaw without coupling to a camera class, and the minimum files to change. | Findings and a proposal. The AI asked how to restore the camera controls. |
+| 2 | Developer chose option 1: the controller forwards camera input. | Final plan with three file groups. |
+| 3 | "go" | Implementation. |
+| 4 | "WASD do not move or do anything but I can look around." (log pasted) | Diagnosed as an invisible character with a static camera. Asked for `show Collision` triage. |
+| 5 | "The capsule does in fact move around." | Confirmed the code worked. Added a placeholder box. |
+
+## AI Mistakes, Corrections and Surprises
+
+- **"Nothing happens" was a visibility problem, not a code bug.** The character had no mesh and the camera didn't follow. The clean log and `show Collision` triage proved movement worked. This is a good example for the course of checking evidence before changing code.
+- **The camera had to be fixed before camera-relative movement could be tested.** The plan said "if the camera can change", but possessing the character in GMS-102 had silently disabled the camera controls.
+- **A one-frame lag is accepted.** The camera manager's cached rotation can be one frame behind. It was not noticeable.
+
+## Media Capture Plan
+
+Nothing below has been captured yet. Numbering follows the folder structure at the top of this document. Items marked "new" are additions.
+
+| File | What to show |
+|---|---|
+| `00-character-no-movement.mp4` | The state before GMS-103: character possessed, WASD does nothing, mouse look is dead. |
+| `01-ia-move.png` | `IA_CameraMove` in the Editor (value type `Axis2D`). |
+| `02-mapping-context.png` | `IMC_MapCamera` with the WASD mappings and their modifiers. |
+| `03-input-binding-code.png` | The `HandleMove` function in `GrantMoneyPlayerCharacter.cpp`, especially the camera yaw lines. |
+| `04-camera-relative-movement.mp4` | The main clip: forward, sideways and diagonal movement, then turn the camera and show movement staying relative to the view. |
+| `05-camera-input-forwarding.png` (new) | The controller's camera bindings and `GetForwardedCameraPawn`. |
+| `06-showdebug-enhancedinput.png` (new) | `showdebug enhancedinput` with the mapping context and the live `IA_CameraMove` value. |
+| `07-placeholder-box.png` (new) | The grey box in the level, facing its direction of travel. |
+| `08-pause-stops-movement.mp4` (new) | Short clip: holding W, pause (movement stops), resume (movement continues). |
+| `09-camera-controls.mp4` (new) | Mouse turn, pitch up and down, and zoom, showing the camera controls restored. |
+
+## Voice-Over Outline
+
+> **Problem (over `00-character-no-movement.mp4`).** "The character is possessed, but it can't move, and we also lost the camera controls. Possessing the character quietly disabled them."
+>
+> **Existing input (over `01-ia-move.png` and `02-mapping-context.png`).** "We don't need new assets. The project already has an Enhanced Input move action mapped to WASD."
+>
+> **The key idea (over `03-input-binding-code.png`).** "We ask the player's camera manager for the view rotation. It doesn't matter which camera class is active. We keep only the yaw, and move the character along that direction, so W always means away from the camera."
+>
+> **Restoring the camera (over `05-camera-input-forwarding.png`).** "The camera pawn isn't possessed, so the controller forwards the mouse input to whichever camera is the view."
+>
+> **Nothing happens? (over `06-showdebug-enhancedinput.png`).** "At first nothing seemed to happen. The log was clean. The character had no mesh and the camera doesn't follow it. A console command showed the capsule was moving the whole time. So we add a simple placeholder box."
+>
+> **Result (over `04-camera-relative-movement.mp4`).** "The box moves relative to the camera, faces its direction of travel, stops while paused, and stops at the walls. Next: collision on the generated world."
+
+## Known Limitations
+
+- The camera does not follow the character, so the character can leave the view. This is later Module 2 work.
+- The camera's own WASD roaming is gone.
+- `IA_CameraMove` is shared by name only, and a dedicated `IA_PlayerMove` may be wanted later.
+- The placeholder box is temporary.
+- A one-frame lag between the camera rotation and the movement direction is possible.
+- Boundary wall stopping already worked because the walls were `BlockAll` from earlier work, so GMS-104 should review and not rebuild it.
+
+## Suggested Commit Message
+
+```text
+GMS-103: Add camera-relative Enhanced Input movement for the player character
+
+- AGrantMoneyPlayerCharacter binds the move action and moves relative to the
+  active camera's yaw using the PlayerCameraManager
+- MapCameraPlayerController forwards camera turn, look and zoom input to the
+  view-target camera pawn
+- AMapCameraPawn exposes AddCameraYaw/Pitch/Zoom
+- Add a temporary placeholder mesh so movement is visible
+
+The camera does not follow the player yet.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+```
+
+Branch: `GMS-103-camera-relative-movement`. Do not commit or push until the diff has been reviewed.
+
+---
+
 # GMS-104 – Generated World and Boundary Collision
 
 Once GMS-103 is complete and merged, create a separate branch for collision.
@@ -1453,6 +1597,84 @@ The editor should not need to reconstruct the programming process by interviewin
 
 ---
 
+# Master Capture Checklist
+
+This is the single list of everything that should be captured for Sprint 1, in the order it is easiest to record. It includes the items added during implementation. Check each one off when the file exists in the shared media folder. Nothing here has been captured yet.
+
+## Rules
+
+- Raw videos go in the shared media folder, not in Git.
+- Clips are about 10–30 seconds.
+- Use the numbered filenames below.
+- Do not stage footage. Record what actually happens, including failures.
+
+## Things That Need a Special Setup
+
+| Item | Why it needs setup | How to get it |
+|---|---|---|
+| `GMS-102/00-baseline.mp4` and `.png` | Must show the project before any GMS-102 code exists | Use a clean checkout or a stash of the pre-GMS-102 commit, build and record `PlayGame`. Then restore your branch. |
+| `GMS-102/02-create-character-class.mp4` | The class was already created in the Editor | If this wasn't recorded, repeat the New C++ Class dialog on a scratch copy of the project and record that. Do not recreate it in the real project. |
+| `GMS-102/07-character-falls.mp4` and `GMS-104/00-before-collision.mp4` | Ground collision now exists, so the character no longer falls | Turn `bGenerateGroundCollision` off on the `TileMapRenderer` actor, press Play and record. Turn it back on afterwards. |
+| `GMS-103/00-character-no-movement.mp4` | WASD now works | Use a build from before the GMS-103 code, or record it right after the GMS-102 build. |
+
+## GMS-102
+
+| File | What to show | Notes |
+|---|---|---|
+| `00-baseline.mp4` / `.png` | `PlayGame` before the change: generated world, existing camera, no character | Special setup, above |
+| `01-existing-camera-architecture.png` | The `AMapCameraPawn` components, or the AI's architecture report | |
+| `02-create-character-class.mp4` / `.png` | The New C++ Class dialog (parent `Character`) | Special setup, above |
+| `03-character-code.png` | `GrantMoneyPlayerCharacter.h` and `.cpp` | The final version is longer than the GMS-102 one, so capture the one that matches the point in the story |
+| `04-player-spawned.png` | The capsule in the generated level, using `show Collision` | |
+| `05-possession-proof.png` | Output Log: `GrantMoneyPlayerCharacter_0 possessed by MapCameraPlayerController_0` | Show the log lines for the tiles and walls too |
+| `06-player-in-world.mp4` | Play, world loads, character visible, view unchanged, pause and resume | |
+| `07-character-falls.mp4` (new) | The capsule falling with ground collision off | Special setup, above |
+| `08-ground-collision-settings.png` (new) | The Collision category on the `TileMapRenderer` actor in Details | |
+| `09-show-collision.png` (new) | `show Collision` with the ground slabs and the capsule standing on them | |
+| `10-gamemode-override.png` (new) | `BP_GrantMoneyGameMode` Class Defaults showing `MapCameraPawn` saved as the default pawn, and the C++ override that wins over it | Good for the "Blueprint overrides C++" lesson |
+
+## GMS-103
+
+| File | What to show | Notes |
+|---|---|---|
+| `00-character-no-movement.mp4` | Character possessed, WASD does nothing, mouse look is dead | Special setup, above |
+| `01-ia-move.png` | `IA_CameraMove` showing value type `Axis2D` | |
+| `02-mapping-context.png` | `IMC_MapCamera` with the WASD mappings and modifiers | |
+| `03-input-binding-code.png` | `HandleMove` in `GrantMoneyPlayerCharacter.cpp`, especially the camera yaw lines | |
+| `04-camera-relative-movement.mp4` | Forward, sideways and diagonal movement, then turn the camera and hold W again | Main Sprint 1 clip. Show the placeholder box facing its direction of travel. |
+| `05-camera-input-forwarding.png` (new) | The controller's camera bindings and `GetForwardedCameraPawn` | |
+| `06-showdebug-enhancedinput.png` (new) | `showdebug enhancedinput` with the mapping context and a live `IA_CameraMove` value | |
+| `07-placeholder-box.png` (new) | The grey box in the level | |
+| `08-pause-stops-movement.mp4` (new) | Hold W, pause (stops), resume (continues) | |
+| `09-camera-controls.mp4` (new) | Mouse turn, pitch up and down, and zoom | Shows the camera controls restored |
+
+## GMS-104
+
+| File | What to show | Notes |
+|---|---|---|
+| `00-before-collision.mp4` | Behaviour before the collision work | Ground collision and walls already exist (see the GMS-102 and GMS-103 as-built records). Record with `bGenerateGroundCollision` off for the "before" shot. |
+| `01-boundary-collision-code.png` | `BuildGroundCollision` and the boundary generator's collision lines | |
+| `02-ground-collision.mp4` | The character walking across the ground | |
+| `03-wall-collision.mp4` | The character walking into a boundary wall and stopping | Already confirmed to work, so this is a recording only |
+
+## Cross-Cutting
+
+| File | What to show |
+|---|---|
+| `Sprint1/pr-and-branches.png` | The three branches or pull requests (GMS-102, GMS-103, GMS-104) |
+| `Sprint1/ai-failures.md` (notes, not footage) | The corrections: Blueprint overriding C++ defaults, the camera losing input, the invisible capsule, "WASD does nothing". See each ticket's As-Built Record. |
+| `Sprint1/final-montage-source.mp4` | One continuous take: Launch, spawn, move, pause, walls. This is the source for Section 8. |
+
+## Suggested Recording Order
+
+1. Record the "before" footage first, because it needs older builds: `GMS-102/00-baseline` and `GMS-103/00-character-no-movement`.
+2. Record the "falls" footage with ground collision off: `GMS-102/07-character-falls` and `GMS-104/00-before-collision`.
+3. Turn ground collision back on and record the main clips: `GMS-102/06`, `GMS-103/04`, `GMS-103/08` and `GMS-103/09`.
+4. Take the screenshots: editor assets, code, the log, and the `showdebug` overlay.
+5. Record the final montage source.
+
+---
+
 # Suggested Sprint 1 Instructional Video Structure
 
 ## Section 1 – Starting Point
@@ -1503,6 +1725,24 @@ GMS-102/06-player-in-world.mp4
 
 Explain Unreal's PlayerController → Pawn possession relationship.
 
+Also explain why the view did not change: the character has no camera, so the original camera pawn was kept as the view target.
+
+---
+
+## Section 4A – When Nothing Is Visible (Added During Implementation)
+
+Use:
+
+```text
+GMS-102/07-character-falls.mp4
+GMS-102/09-show-collision.png
+GMS-102/08-ground-collision-settings.png
+```
+
+Explain the real debugging story: the capsule was invisible, `show Collision` showed nothing, and the cause was that the tiles had `NoCollision`, so the character fell out of the world. The possession log proved the spawn was fine. Then show the simple ground collision that was added, and its Details settings.
+
+This is a strong AI-workflow lesson: check the evidence (the log) before assuming the code is broken.
+
 ---
 
 ## Section 5 – Enhanced Input
@@ -1515,7 +1755,33 @@ GMS-103/02-mapping-context.png
 GMS-103/03-input-binding-code.png
 ```
 
-Explain how `IA_Move` and the mapping context translate WASD into a 2D movement value.
+Explain how the existing `IA_CameraMove` (reused as the character's move action) and the mapping context translate WASD into a 2D movement value.
+
+---
+
+## Section 5A – Restoring the Camera Controls (Added During Implementation)
+
+Use:
+
+```text
+GMS-103/00-character-no-movement.mp4
+GMS-103/05-camera-input-forwarding.png
+```
+
+Explain that possessing the character silently disabled the camera's mouse look, because the camera pawn only handles input when it is possessed. Show the controller forwarding the input to the view-target camera.
+
+---
+
+## Section 5B – "WASD Does Nothing" (Added During Implementation)
+
+Use:
+
+```text
+GMS-103/06-showdebug-enhancedinput.png
+GMS-103/07-placeholder-box.png
+```
+
+Explain that the first test looked broken but was not: the character had no mesh and the camera does not follow it. A console command showed the capsule was moving. Then show the placeholder box that was added so movement is visible.
 
 ---
 
@@ -1525,9 +1791,10 @@ Use:
 
 ```text
 GMS-103/04-camera-relative-movement.mp4
+GMS-103/08-pause-stops-movement.mp4
 ```
 
-Explain how movement uses the active camera's yaw rather than fixed world coordinates.
+Explain how movement uses the active camera's yaw rather than fixed world coordinates. Show pause stopping movement.
 
 ---
 
@@ -1582,7 +1849,8 @@ Also preserve examples where:
 - camera possession behaved differently than expected;
 - input mappings were incorrect;
 - collision behaved incorrectly;
-- the human developer changed the AI's proposed design.
+- the human developer changed the AI's proposed design;
+- a result looked like a bug but was not (for example, the invisible character in GMS-103).
 
 These moments are valuable for the later **AI Workflow Review**.
 
