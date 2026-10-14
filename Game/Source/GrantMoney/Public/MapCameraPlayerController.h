@@ -9,10 +9,13 @@
 class UInputMappingContext;
 class UInputAction;
 class UPauseMenuWidget;
+class AMapCameraPawn;
+struct FInputActionValue;
 
 /**
  * Registers the map camera input mapping context for the local player and
- * owns the pause menu toggle. The camera Pawn owns the camera action bindings.
+ * owns the pause menu toggle. It also forwards camera turn, look and zoom
+ * input to the view-target camera pawn while a different pawn is possessed.
  */
 UCLASS()
 class GRANTMONEY_API AMapCameraPlayerController : public APlayerController
@@ -41,6 +44,17 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Pause")
 	TSubclassOf<UPauseMenuWidget> PauseMenuWidgetClass;
 
+	// Camera actions forwarded to the view-target camera pawn.
+	// Default to /Game/Input/IA_CameraTurn, IA_CameraLookUp and IA_CameraZoom.
+	UPROPERTY(EditAnywhere, Category = "Camera|Input")
+	TObjectPtr<UInputAction> CameraTurnAction;
+
+	UPROPERTY(EditAnywhere, Category = "Camera|Input")
+	TObjectPtr<UInputAction> CameraLookUpAction;
+
+	UPROPERTY(EditAnywhere, Category = "Camera|Input")
+	TObjectPtr<UInputAction> CameraZoomAction;
+
 public:
 	// Opens the pause menu if it is closed, closes it if it is open.
 	void TogglePauseMenu();
@@ -48,6 +62,14 @@ public:
 private:
 	void OpenPauseMenu();
 	void ClosePauseMenu();
+
+	void HandleCameraTurn(const FInputActionValue& Value);
+	void HandleCameraLookUp(const FInputActionValue& Value);
+	void HandleCameraZoom(const FInputActionValue& Value);
+
+	// The view-target camera pawn, or null if the view target is not a camera pawn
+	// or is the possessed pawn (which then handles its own input).
+	AMapCameraPawn* GetForwardedCameraPawn() const;
 
 	// Created once and reused. The menu is open only while it is in the viewport.
 	UPROPERTY(Transient)
