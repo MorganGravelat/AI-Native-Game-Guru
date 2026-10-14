@@ -54,6 +54,28 @@ public:
     )
     TObjectPtr<UMaterialInterface> BoundaryMaterial;
 
+    // Adds an invisible blocking slab under every rendered tile so characters
+    // can stand on the map. The tile meshes themselves have no collision.
+    UPROPERTY(EditAnywhere, Category = "Collision")
+    bool bGenerateGroundCollision = true;
+
+    // Slab thickness in Unreal units. The top surface sits at the tile height (Z = 0).
+    UPROPERTY(
+        EditAnywhere,
+        Category = "Collision",
+        meta = (ClampMin = "1.0", EditCondition = "bGenerateGroundCollision")
+    )
+    float GroundCollisionThickness = 20.0f;
+
+    // Collision profile applied to the ground slabs. Change this to experiment
+    // with different blocking rules without touching code.
+    UPROPERTY(
+        EditAnywhere,
+        Category = "Collision",
+        meta = (EditCondition = "bGenerateGroundCollision")
+    )
+    FName GroundCollisionProfile = TEXT("BlockAll");
+
 #if WITH_EDITORONLY_DATA
     // Draws the map in the editor viewport while editing the level.
     // The preview is never saved; gameplay always builds a fresh copy.
@@ -104,6 +126,9 @@ private:
     // Builds the TileGen map selected by LevelToRender.
     // Expects a clean actor; RebuildMap clears first.
     void BuildMap();
+
+    // Adds one hidden collision-only instance per transform (one per tile).
+    void BuildGroundCollision(const TArray<FTransform>& TileTransforms);
 
     // Destroys every component that BuildMap created.
     void ClearGeneratedComponents();
