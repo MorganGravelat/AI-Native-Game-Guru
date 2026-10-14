@@ -123,3 +123,19 @@ At the end of a task, be able to produce:
 - Unreal binary assets should use Git LFS where appropriate.
 - Never commit or push unless explicitly instructed.
 - Always review changes and ensure compliance with the project's contribution guidelines before pushing.
+
+## Discord User Map To Jira Members
+
+| Discord User | Jira Member |
+|--------------|-------------|
+| MorganG | Morgan Gravelat |
+| Austin | Austin Long | 
+| Kai | Kai Gerry |
+| Julio | Julio Maldonado |
+| Rohaan Mansoor | ro376504 |
+
+
+
+
+
+
