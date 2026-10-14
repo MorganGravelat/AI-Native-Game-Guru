@@ -1,0 +1,40 @@
+We are starting Jira GMS-102: "Playable C++ character spawns and is possessed."
+
+Follow CLAUDE.md.
+
+Before editing anything, inspect only the smallest relevant set of C++ and config files.
+
+Determine:
+
+1. What GameMode is currently used by PlayGame.
+2. What PlayerController is currently used.
+3. What object currently owns or controls the Module 1 camera.
+4. What the current DefaultPawnClass is.
+5. How the pause system is connected to the PlayerController/pawn.
+6. Whether a player-character class already exists.
+7. Which exact files would need to change to introduce an ACharacter-derived playable character.
+
+Do not modify files yet.
+
+Do not inspect binaries, .uasset files, generated Unreal directories, or unrelated source.
+
+The acceptance criteria are:
+- a C++ player character exists and compiles;
+- PlayGame spawns and possesses it;
+- it has a collision capsule and CharacterMovementComponent;
+- the TileGen renderer still works;
+- the existing pause system still works;
+- the architecture can later support animation and combat.
+
+Report the current architecture, the minimum proposed change, likely files affected, and any risk to the existing camera.
+
+# RESPONSE
+
+GameMode: DefaultEngine.ini sets GlobalDefaultGameMode=/Game/Blueprints/BP_GrantMoneyGameMode.BP_GrantMoneyGameMode_C. The map is PlayGame1.
+The C++ parent is presumably AGrantMoneyGameMode, an empty AGameModeBase subclass with no constructor.
+So nothing is set in C++, and the classes must be set in the Blueprint's defaults.
+The PlayGame1 map could also override the GameMode in World Settings. I can't tell from here.
+PlayerController: Almost certainly AMapCameraPlayerController, set in the BP.
+Camera owner: AMapCameraPawn is a plain APawn.
+It has a SceneRoot, then a SpringArm, then a Camera, with no collision and no movement component.
+Perspective projection and mouse-driven yaw/pitch/zoom are driven manually in Tick.

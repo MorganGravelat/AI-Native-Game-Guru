@@ -142,6 +142,9 @@ void ATileMapRenderer::PostEditChangeProperty(
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallHeight)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallThickness)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, BoundaryMaterial)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bGenerateGroundCollision)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, GroundCollisionThickness)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, GroundCollisionProfile)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bPreviewInEditor);
 
     if (!bAffectsMap)
@@ -221,6 +224,67 @@ void ATileMapRenderer::ClearGeneratedComponents()
     }
 }
 
+void ATileMapRenderer::BuildGroundCollision(const TArray<FTransform>& TileTransforms)
+{
+    if (!BoundaryCubeMesh || TileTransforms.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("TileMapRenderer: Ground collision skipped (no cube mesh or no tiles)."));
+        return;
+    }
+
+    // The engine cube is 100 units on each side.
+    constexpr float EngineCubeSize = 100.0f;
+
+    const FVector SlabScale(
+        TileSize / EngineCubeSize,
+        TileSize / EngineCubeSize,
+        GroundCollisionThickness / EngineCubeSize
+    );
+
+    TArray<FTransform> SlabTransforms;
+    SlabTransforms.Reserve(TileTransforms.Num());
+
+    for (const FTransform& TileTransform : TileTransforms)
+    {
+        FVector SlabLocation = TileTransform.GetLocation();
+        SlabLocation.Z -= GroundCollisionThickness * 0.5f;
+
+        SlabTransforms.Emplace(FRotator::ZeroRotator, SlabLocation, SlabScale);
+    }
+
+    const FName ComponentName = MakeUniqueObjectName(
+        this,
+        UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+        TEXT("GroundCollision")
+    );
+
+    UHierarchicalInstancedStaticMeshComponent* Ground =
+        NewObject<UHierarchicalInstancedStaticMeshComponent>(this, ComponentName);
+
+    if (!Ground)
+    {
+        return;
+    }
+
+    MarkAsGenerated(Ground);
+    AddInstanceComponent(Ground);
+
+    Ground->SetupAttachment(SceneRoot);
+    Ground->SetStaticMesh(BoundaryCubeMesh);
+
+    // Collision only: the tile planes are what the player sees.
+    Ground->SetVisibility(false);
+    Ground->SetCastShadow(false);
+    Ground->SetCanEverAffectNavigation(false);
+    Ground->SetCollisionProfileName(GroundCollisionProfile);
+    Ground->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+    Ground->RegisterComponent();
+    Ground->AddInstances(SlabTransforms, false);
+
+    UE_LOG(LogTemp, Log, TEXT("TileMapRenderer: Created %d ground collision slabs."), SlabTransforms.Num());
+}
+
 void ATileMapRenderer::BuildMap()
 {
     if (!TilePlaneMesh)
@@ -283,6 +347,9 @@ void ATileMapRenderer::BuildMap()
 
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
+
+    // Location of every tile that was rendered, used for the ground collision.
+    TArray<FTransform> RenderedTileTransforms;
 
     int32 TilesCreated = 0;
 
@@ -362,7 +429,7 @@ void ATileMapRenderer::BuildMap()
                 TileGroup->SetupAttachment(SceneRoot);
                 TileGroup->SetStaticMesh(TilePlaneMesh);
 
-                // Ground tiles do not need collision yet.
+                // The tile planes are visual only; ground collision comes from BuildGroundCollision.
                 TileGroup->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
                 TileGroup->RegisterComponent();
@@ -425,6 +492,7 @@ void ATileMapRenderer::BuildMap()
             );
 
             PendingTransforms.FindOrAdd(TileId).Add(TileTransform);
+            RenderedTileTransforms.Add(TileTransform);
 
             ++TilesCreated;
         }
@@ -445,6 +513,11 @@ void ATileMapRenderer::BuildMap()
         TEXT("TileMapRenderer finished. Created %d tiles."),
         TilesCreated
     );
+
+    if (bGenerateGroundCollision)
+    {
+        BuildGroundCollision(RenderedTileTransforms);
+    }
 
     if (bGenerateBoundaries)
     {
