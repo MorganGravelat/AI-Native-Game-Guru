@@ -24,6 +24,7 @@
 **/.idea/
 
 *.sln
+*.slnx
 *.suo
 *.user
 *.sln.docstates
@@ -82,6 +83,7 @@ venv/
 .vscode/
 **/.vscode/
 *.code-workspace
+*.vsconfig
 
 # Editor/tool-specific ignore files if not intentionally shared
 **/.ignore
