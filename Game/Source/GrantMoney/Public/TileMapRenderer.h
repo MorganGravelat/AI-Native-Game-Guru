@@ -54,8 +54,8 @@ public:
     )
     TObjectPtr<UMaterialInterface> BoundaryMaterial;
 
-    // Adds an invisible blocking slab under every rendered tile so characters
-    // can stand on the map. The tile meshes themselves have no collision.
+    // Adds an invisible blocking slab under every playable cell. The tile meshes
+    // themselves have no collision.
     UPROPERTY(EditAnywhere, Category = "Collision")
     bool bGenerateGroundCollision = true;
 
@@ -127,7 +127,7 @@ private:
     // Expects a clean actor; RebuildMap clears first.
     void BuildMap();
 
-    // Adds one hidden collision-only instance per transform (one per tile).
+    // Adds one hidden collision-only instance per transform (one per playable cell).
     void BuildGroundCollision(const TArray<FTransform>& TileTransforms);
 
     // Destroys every component that BuildMap created.

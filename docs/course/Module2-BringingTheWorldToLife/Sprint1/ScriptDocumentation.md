@@ -1355,7 +1355,7 @@ Branch: `GMS-103-camera-relative-movement`. Do not commit or push until the diff
 
 Once GMS-103 is complete and merged, create a separate branch for collision.
 
-Note: a basic ground collision (hidden slabs under each rendered tile, with `bGenerateGroundCollision`, `GroundCollisionThickness` and `GroundCollisionProfile` on `ATileMapRenderer`) was already added during GMS-102 so the character could stand on the map. See the GMS-102 As-Built Record. This issue should review and extend that work, not rebuild it. Boundary walls were already `BlockAll`.
+Note: a basic ground collision (hidden slabs under each playable cell, with `bGenerateGroundCollision`, `GroundCollisionThickness` and `GroundCollisionProfile` on `ATileMapRenderer`) was already added during GMS-102 so the character could stand on the map. GMS-104 then changed it to use the same playable-cell rule as the walls. See the GMS-102 As-Built Record and the GMS-104 As-Built Recording Guide. This issue should review and extend that work, not rebuild it. Boundary walls were already `BlockAll`.
 
 ```bash
 git checkout main
@@ -1533,6 +1533,103 @@ Suggested narration:
 
 ---
 
+# GMS-104 – As-Built Recording Guide
+
+This section says exactly which file to give each recording you already made, and exactly which screenshots to take on top of them. Line numbers refer to the current files. If you edit the files first, find the same code by the function or variable name given in the table.
+
+## What GMS-104 Actually Changed
+
+Collision mostly already existed: the walls were `BlockAll` from Module 1, and ground slabs were added in GMS-102. The one code change in GMS-104 is in `TileMapRenderer.cpp` (`BuildMap`): the floor slabs are now built for every **playable cell** (`Valid != 0` and `Ground != 0`), not just for tiles that were successfully drawn. That is the same rule the walls use in `MapBoundaryGenerator`, so a missing tile texture can no longer leave a hole in the floor inside the walls.
+
+Explain this in the video as: "We confirmed collision, and made the floor and the walls use the same definition of 'playable'."
+
+## Rename Your Four Videos
+
+| Your recording | Save it as | Why this name |
+|---|---|---|
+| Disabling collision and falling through the map, then re-enabling it | `00-before-collision.mp4` | This is the "before" shot. It is also the only failure footage. |
+| Baseline: running around the map in circles at the start | `02-ground-collision.mp4` | Shows the character standing on and moving across the generated ground. |
+| Running around the perimeter and bumping into the walls | `03-wall-collision.mp4` | Main result clip. It shows the character stopping at the walls and sliding along them. |
+| `show Collision` on all the tiles, then running into a wall | `04-show-collision-overlay.mp4` (new) | Shows the collision slabs and walls that the character is hitting. |
+
+Keep the original raw files too, and note the order they were recorded in. If the falling clip does not show you turning `bGenerateGroundCollision` back on, that is fine. Trim it in the edit.
+
+## Screenshots to Take
+
+Take these in the order below. All code screenshots should be of the Editor or VS Code with a readable font size, and with the file name visible in the tab.
+
+| File | What to show | Exactly where |
+|---|---|---|
+| `01a-playable-cell-rule.png` | The definition of a playable cell used by the walls | `MapBoundaryGenerator.cpp`, lines 62–71 (the `IsPlayable` lambda). |
+| `01b-wall-collision-profile.png` | The walls are blocking | `MapBoundaryGenerator.cpp`, lines 178–183 (`SetCollisionProfileName(TEXT("BlockAll"))` and `SetCollisionEnabled`). |
+| `01c-ground-slab-collision.png` | How the invisible floor is made | `TileMapRenderer.cpp`, lines 272–288 (the "Collision only" block: `SetVisibility(false)`, `SetCollisionProfileName(GroundCollisionProfile)`). |
+| `01d-playable-cells-change.png` | The GMS-104 change itself | `TileMapRenderer.cpp`, lines 351–381 (`PlayableCellTransforms` and its comment). Best shown as the VS Code or Git diff view, so the added lines are highlighted. |
+| `01-boundary-collision-code.png` | The single "best" code image, if you only want one | Use `01a`. |
+| `04-ground-slab-count-log.png` | Floor and tile counts match | Output Log after pressing Play, showing `Created 2896 tiles.` and `Created 2896 ground collision slabs.` and `MapBoundaryGenerator: Created 304 wall segments.` together. Filter the log by `TileMapRenderer` if it is crowded. |
+| `05-collision-settings-details.png` | The settings that make collision easy to change later | The `TileMapRenderer` actor in the Details panel with the Collision category open (`bGenerateGroundCollision`, `GroundCollisionThickness`, `GroundCollisionProfile`). If you already took `GMS-102/08-ground-collision-settings.png`, reuse it and skip this one. |
+| `06-show-collision-still.png` | A still of the collision view | A frame from `04-show-collision-overlay.mp4` with the floor slabs, the walls and the character box all visible. Pause the video on a good frame, or take it live with `show Collision`. |
+| `07-playerstart-inside-map.png` (optional) | The player starts inside the playable area | The PlayerStart in the Editor viewport, with the map around it. Skip if it is not clear. |
+
+If time is short, the four that matter most are `01a`, `01d`, `04-ground-slab-count-log` and `06-show-collision-still`.
+
+## What Each Clip and Image Is For
+
+```text
+00-before-collision.mp4              "Without collision, the character falls through the world."
+01a-playable-cell-rule.png           "Walls come from one data-driven rule."
+01d-playable-cells-change.png        "The floor now follows the same rule."
+04-ground-slab-count-log.png         "Tile, floor and wall counts line up."
+02-ground-collision.mp4              "The character stands on and walks across the ground."
+04-show-collision-overlay.mp4        "This is the invisible collision the character is hitting."
+03-wall-collision.mp4                "The character stops at the generated walls."
+```
+
+## Voice-Over Outline
+
+> **The problem (over `00-before-collision.mp4`).** "Movement alone isn't enough. With collision off, the character falls straight through the world."
+>
+> **One definition of playable (over `01a-playable-cell-rule.png`).** "The walls already come from our map data. A cell is playable if the map says it's valid and has a ground tile. No coordinates are hardcoded."
+>
+> **The floor (over `01c-ground-slab-collision.png` and `01d-playable-cells-change.png`).** "The tiles are only pictures. The floor is an invisible slab under every playable cell. We made it use the same rule as the walls, so a missing tile texture can't leave a hole."
+>
+> **The counts match (over `04-ground-slab-count-log.png`).** "The log shows the same number of tiles and floor slabs, and the wall segments around them."
+>
+> **On the ground (over `02-ground-collision.mp4`).** "The character stands on the map and walks normally."
+>
+> **What we're hitting (over `04-show-collision-overlay.mp4`).** "With the collision view on, you can see the floor and the walls."
+>
+> **The walls (over `03-wall-collision.mp4`).** "Walking the perimeter, the character stops at every wall and slides along it."
+
+## Verification Results
+
+You reported running the tests and recording them. Record your own pass or fail result for each line before you commit. Nothing below is marked passed until you confirm it.
+
+| Check | Result |
+|---|---|
+| Project compiles after the `TileMapRenderer` change | _you fill in_ |
+| Tile count equals floor slab count in the log | _you fill in_ |
+| Character stands on the ground and does not fall | _you fill in_ |
+| Character stops at the walls around the whole perimeter, including corners | _you fill in_ |
+| Character falls when `bGenerateGroundCollision` is off, and stands again when it is on | _you fill in_ |
+| No other non-generated actors in `PlayGame1` let the character through | _you fill in_ (this can only be checked in the Editor) |
+
+## Suggested Commit Message
+
+```text
+GMS-104: Build ground collision for every playable cell
+
+- TileMapRenderer: collect floor slab positions from the same playable-cell
+  rule the boundary walls use (Valid and Ground != 0), before the tile asset
+  check, so a tile with a missing texture cannot leave a hole inside the walls
+- No changes to MapArrays or MapBoundaryGenerator
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+```
+
+Branch: `GMS-104-player-world-collision`.
+
+---
+
 # Sprint 1 Final Verification
 
 Before considering the programming sprint complete, verify the full sequence.
@@ -1652,10 +1749,11 @@ This is the single list of everything that should be captured for Sprint 1, in t
 
 | File | What to show | Notes |
 |---|---|---|
-| `00-before-collision.mp4` | Behaviour before the collision work | Ground collision and walls already exist (see the GMS-102 and GMS-103 as-built records). Record with `bGenerateGroundCollision` off for the "before" shot. |
-| `01-boundary-collision-code.png` | `BuildGroundCollision` and the boundary generator's collision lines | |
-| `02-ground-collision.mp4` | The character walking across the ground | |
-| `03-wall-collision.mp4` | The character walking into a boundary wall and stopping | Already confirmed to work, so this is a recording only |
+| `00-before-collision.mp4` | The character falling through the map with `bGenerateGroundCollision` off, then collision turned back on | Recorded. See the GMS-104 As-Built Recording Guide. |
+| `01-boundary-collision-code.png` | `IsPlayable` in `MapBoundaryGenerator.cpp` (same as `01a-playable-cell-rule.png`) | Also take `01b`, `01c`, `01d`, `04-ground-slab-count-log.png` and `06-show-collision-still.png`. Exact line ranges are in the As-Built Recording Guide. |
+| `02-ground-collision.mp4` | The character running in circles across the generated ground | Recorded |
+| `03-wall-collision.mp4` | The character running the perimeter and bumping into the walls | Recorded |
+| `04-show-collision-overlay.mp4` (new) | `show Collision` over all the tiles, then running into a wall | Recorded |
 
 ## Cross-Cutting
 
