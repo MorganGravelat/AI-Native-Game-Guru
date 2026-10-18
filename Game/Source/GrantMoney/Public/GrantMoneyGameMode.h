@@ -10,8 +10,8 @@ class AMapCameraPawn;
 
 /**
  * Spawns the player character at the PlayerStart and has the player possess it.
- * The Module 1 camera is spawned as a separate, unpossessed actor and kept as
- * the player's view target.
+ * The Module 1 camera is spawned as a separate, unpossessed actor, kept as the
+ * player's view target, and set to follow the character.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyGameMode : public AGameModeBase
