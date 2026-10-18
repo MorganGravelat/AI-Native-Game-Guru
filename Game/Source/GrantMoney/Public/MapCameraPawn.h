@@ -146,7 +146,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Camera|Movement", meta = (ClampMin = "0.0", EditCondition = "bLockHeightToGround"))
 	float HeightAboveGround = 100.0f;
 
-	// Actor the camera tracks. Leave empty for free roaming.
+	// Actor the camera tracks. Set by the GameMode at spawn. Leave empty for free roaming.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Follow")
 	TObjectPtr<AActor> FollowTarget;
 
@@ -183,9 +183,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Camera|Lens", meta = (ClampMin = "5.0", ClampMax = "170.0"))
 	float FieldOfView = 90.0f;
 
-	// Smooths camera position changes by lagging behind the pawn.
+	// Smooths camera position changes by lagging behind the pawn. On by default so
+	// the camera trails the player gently while following.
 	UPROPERTY(EditAnywhere, Category = "Camera|Smoothing")
-	bool bEnableCameraLag = false;
+	bool bEnableCameraLag = true;
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Smoothing", meta = (ClampMin = "0.1", EditCondition = "bEnableCameraLag"))
 	float CameraLagSpeed = 10.0f;

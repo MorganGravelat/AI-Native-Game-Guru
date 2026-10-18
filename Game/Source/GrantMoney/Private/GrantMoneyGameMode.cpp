@@ -49,6 +49,11 @@ void AGrantMoneyGameMode::HandleStartingNewPlayer_Implementation(APlayerControll
 	if (IsValid(CameraPawn))
 	{
 		NewPlayer->SetViewTarget(CameraPawn);
+
+		// The Module 1 camera becomes the gameplay camera: same arm, pitch, yaw and zoom, now tracking the player.
+		CameraPawn->SetFollowTarget(PlayerPawn);
+
+		UE_LOG(LogTemp, Log, TEXT("GrantMoneyGameMode: camera %s now follows %s."), *GetNameSafe(CameraPawn), *GetNameSafe(PlayerPawn));
 	}
 	else
 	{

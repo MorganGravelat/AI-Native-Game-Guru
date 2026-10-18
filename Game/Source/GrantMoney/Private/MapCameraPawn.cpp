@@ -20,6 +20,9 @@ AMapCameraPawn::AMapCameraPawn()
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Follow after the character has moved this frame, so the view is never a frame behind.
+	PrimaryActorTick.TickGroup = TG_PostPhysics;
+
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
 
