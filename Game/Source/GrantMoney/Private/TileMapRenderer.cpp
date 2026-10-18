@@ -348,8 +348,10 @@ void ATileMapRenderer::BuildMap()
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
 
-    // Location of every tile that was rendered, used for the ground collision.
-    TArray<FTransform> RenderedTileTransforms;
+    // Location of every playable cell (Valid and Ground != 0), whether or not its
+    // tile could be drawn. Matches the cells the boundary walls enclose, so the
+    // floor never has a hole inside the walls.
+    TArray<FTransform> PlayableCellTransforms;
 
     int32 TilesCreated = 0;
 
@@ -371,6 +373,12 @@ void ATileMapRenderer::BuildMap()
             {
                 continue;
             }
+
+            PlayableCellTransforms.Emplace(
+                FRotator::ZeroRotator,
+                FVector(X * TileSize, Y * TileSize, 0.0f),
+                FVector::OneVector
+            );
 
             if (InvalidTileIds.Contains(TileId))
             {
@@ -492,7 +500,6 @@ void ATileMapRenderer::BuildMap()
             );
 
             PendingTransforms.FindOrAdd(TileId).Add(TileTransform);
-            RenderedTileTransforms.Add(TileTransform);
 
             ++TilesCreated;
         }
@@ -516,7 +523,7 @@ void ATileMapRenderer::BuildMap()
 
     if (bGenerateGroundCollision)
     {
-        BuildGroundCollision(RenderedTileTransforms);
+        BuildGroundCollision(PlayableCellTransforms);
     }
 
     if (bGenerateBoundaries)
