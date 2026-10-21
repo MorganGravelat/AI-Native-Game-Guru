@@ -88,6 +88,10 @@ public:
     UFUNCTION(CallInEditor, Category = "Map")
     void RebuildMap();
 
+    // World position of a cell's centre at tile height. Cells use the same
+    // [X][Y] indices as FGrantMoneyMapData.
+    FVector GetCellWorldLocation(const FIntPoint& Cell) const;
+
     virtual void OnConstruction(const FTransform& Transform) override;
 
     // ComponentTags entry on every generated component, so they can be found
