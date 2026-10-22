@@ -1,0 +1,140 @@
+GMS-106 – Safe player start flow for supported maps
+Claude Code session log (Claude Opus 5.5). Prompts are verbatim. Responses are the assistant's final messages; tool actions are summarised in brackets.
+
+Before the first prompt, the developer ran /mcp three times to reconnect the Atlassian (Jira) MCP server: timeout, then "Authentication cleared", then "Authentication successful. Connected to atlassian."
+
+==============================================================================
+# PROMPT 1
+==============================================================================
+
+Read through the CLAUDE documentation and rules, as well as familiarize yourself with the context of the docs folder for output. Create a new branch for GMS-106 and check in to it. Do not implement yet.
+
+# RESPONSE
+
+[Listed the docs/ folder. Read docs/ai/DocumentationScript.md, docs/ai/claude_prompt, docs/process/GrantMoney_How_We_Deliver.md and the start of Sprint2/GMS-111-ScriptDocumentation.md. Fetched GMS-106 from Jira. Ran: git checkout -b GMS-106-safe-player-start]
+
+I created and checked out the new branch `GMS-106-safe-player-start` from `main` (it was clean, at `cf10290`). Nothing is pushed, committed or implemented yet.
+
+GMS-106: Create a safe player start flow for supported maps. It's assigned to you, already In Progress in Jira, and labelled module2 / sprint1 / spawn. It's done when:
+- The player begins in a known valid playable location.
+- The spawn works with the existing level/map selection flow.
+- The character doesn't spawn inside a wall or obvious blocking prop.
+- More generated maps can be added without rewriting the player class.
+- If no valid start can be found, the game logs a clear error instead of crashing.
+
+The ticket also asks for course capture as you build:
+- Raw clips while you work, not just a finished demo.
+- At least one screenshot per meaningful step, with numbered filenames.
+- Saved AI prompts, corrections, and at least one verification result.
+- Raw media goes in the shared media folder, not Git.
+
+What I took from the docs and rules:
+- CLAUDE.md:
+  - Use targeted file reads and skip generated folders and binary assets.
+  - Gameplay logic stays in C++, and the MapArrays/TileGen abstractions stay intact.
+  - No TileGen filenames in gameplay code, and data-driven spawning over hardcoded coordinates.
+  - Never commit or push without your instruction.
+- docs/process/GrantMoney_How_We_Deliver.md: one ticket, one branch, one PR, with a task document written during the work that goes in the same PR. Commit messages look like `GMS-106: …`.
+- docs/ai/DocumentationScript.md: the end-of-milestone packaging prompt. It covers a change report, developer guide and script, and keeps AI suggestions, engineer decisions, corrections, tests run and unverified items separate.
+- Where the output goes: Module 2 / Sprint 2 docs follow the GMS-111 pattern, e.g. docs/course/Module2-BringingTheWorldToLife/Sprint2/GMS-111-ScriptDocumentation.md. That's one guide per issue: the Jira text, the starting point taken from the source, steps, what actually happened, and `_you fill in_` placeholders for anything not yet verified.
+
+The ticket is labelled sprint1, but the most recent work (GMS-111) went into a Sprint2 folder. Can you confirm whether the GMS-106 task doc should go in Module2-BringingTheWorldToLife/Sprint1/ or Sprint2/?
+
+When you're ready to start, I'll first list the spawn-related files I plan to read (likely the GameMode, the player character and the map selection code) before touching anything.
+
+==============================================================================
+# PROMPT 2
+==============================================================================
+
+GMS-106 goes in the Sprint 1 folder, as indicated by the module 2 sprint 1 backlog on Jira. Start implementation of GMS-106, going step by step, on the GMS-106 branch off of main.
+
+# RESPONSE
+
+[Step 1 – Investigation. Stated the files to inspect: the GameMode (owns spawning), MapArrays (map selection/data), the TileMapRenderer header (cell-to-world mapping, GMS-104 collision) and the player character header. Read GrantMoneyGameMode.h/.cpp, MapArrays.h/.cpp, TileMapRenderer.h, the cell placement section of TileMapRenderer.cpp, MapBoundaryGenerator.h, the GrantMoneyPlayerCharacter constructor, GrantMoney.Build.cs, the uproject engine version, the Content/Maps listing (names only) and DefaultEngine.ini map settings.]
+
+Step 1 is done. Here's what I found (none of it is a test result):
+
+- Spawn uses the stock path: `FindPlayerStart` returns the editor-placed PlayerStart, or World Settings if the level has none. The camera pawn is spawned at that StartSpot.
+- Map selection is one umap per level (`PlayGame1`, `PlayGame2`). Each has an `ATileMapRenderer` whose `LevelToRender` goes through `FMapArrays::GetMap`.
+- A cell is playable when `Valid != 0 && Ground != 0` (the same rule as `MapBoundaryGenerator`). It sits at `(X*100, Y*100, 0)` in renderer space, and walls sit on the edges of playable cells.
+- Timing: the local player's pawn spawns *before* actor `BeginPlay`, so the renderer's ground and walls don't exist yet at spawn time. The safety check therefore has to come from the map data, plus an overlap test against placed props.
+
+Design for Step 2 (small, data-driven, player class untouched):
+1. New `FPlayerSpawnResolver` (plain C++, like `FMapBoundaryGenerator`). It returns the "safe" cells, meaning a playable cell whose eight neighbours are all playable, so walls are at least a tile away. They're ordered by distance to the centre of the playable area, which makes the start deterministic.
+2. `ATileMapRenderer::GetCellWorldLocation(FIntPoint)`. This is the one place that turns a grid cell into a world position.
+3. `AGrantMoneyGameMode::SpawnDefaultPawnFor` override. It finds the level's renderer, resolves its map, and picks the first safe cell whose capsule overlap test is clear. If that fails, it logs an error and falls back to the PlayerStart, and it returns null instead of crashing when nothing is usable. The camera now spawns at the pawn instead of the PlayerStart.
+
+[Step 2a – Created Public/PlayerSpawnResolver.h and Private/PlayerSpawnResolver.cpp. Added the missing #include "Algo/StableSort.h" in a follow-up edit.]
+[Step 2b – Added GetCellWorldLocation to TileMapRenderer.h/.cpp.]
+[Step 2c – Added the SpawnDefaultPawnFor_Implementation override and FindSafeSpawnLocation to GrantMoneyGameMode.h/.cpp. Changed the camera pawn spawn transform to use the character's transform.]
+[Step 3 – Compiled: Engine/Build/BatchFiles/Build.bat GrantMoneyEditor Win64 Development -Project=.../Game/GrantMoney.uproject -WaitMutex → "Result: Succeeded".]
+
+The build succeeded. The only warnings are deprecation notices from engine headers (`Character.h`, `HierarchicalInstancedStaticMeshComponent.h`), none from our code.
+
+Step 4 is an offline check: I'll work out from the generated arrays which cell each map *should* pick, so you have expected log values to compare against when you run PIE.
+
+[Wrote a Python script in the session scratchpad, outside the repo, that applies the same rules to Maps/Map1_1.cpp and Maps/Map1_2.cpp. Output:
+Map1_1: playable=2819 safe=2531 centre=(32.12,30.64) best=[(32, 31), (32, 30), (33, 31)]
+Map1_2: playable=2896 safe=2604 centre=(31.50,31.50) best=[(31, 31), (31, 32), (32, 31)]]
+
+Expected results (offline computation, not an in-engine test): Level 1 should start at cell (32, 31) and Level 2 at (31, 31). If the renderer sits at the origin, that's about X=3200 Y=3100 Z=93 for Level 1.
+
+Step 5: start the running task doc in the Sprint 1 folder.
+
+[Created docs/course/Module2-BringingTheWorldToLife/Sprint1/GMS-106-ScriptDocumentation.md.]
+
+One correction to the doc: I never actually proposed line-tracing, so I'll state that point as a finding rather than describe it as a failed idea.
+
+[Edited the "AI Mistakes, Corrections and Surprises" entry accordingly. Reviewed git status and git diff: only the intended source files and the new doc changed, and no generated or binary files.]
+
+I've implemented GMS-106 on GMS-106-safe-player-start and it compiles, but nothing has been run in the Editor yet. The final step, checking it in PIE, needs you.
+
+What changed
+- Spawn location: the player now starts on a cell chosen from the map data instead of wherever the PlayerStart was placed. A cell qualifies as a safe start when it and all eight cells around it are playable, which keeps the character at least a full tile away from the boundary walls.
+- Which cell: of those, it picks the one closest to the centre of the playable area, so each map always starts in the same place.
+- Props: before using a cell, it checks that the character's capsule doesn't overlap any blocking prop placed in the level. If it does, it tries the next cell.
+- Map selection: it reads LevelToRender from the level's ATileMapRenderer, so PlayGame1 and PlayGame2 both work, and a newly registered map works with no extra code.
+- Facing: the PlayerStart's yaw is still used, so the starting camera direction is set in the Editor as before.
+- Failure: if nothing works, it logs an error and falls back to the PlayerStart. If there isn't even a start spot, it logs an error and spawns nothing, with no crash.
+
+Files
+| File | Why |
+|---|---|
+| Public/PlayerSpawnResolver.h, Private/PlayerSpawnResolver.cpp (new) | Picks the safe cells from any registered map. |
+| Public/TileMapRenderer.h, Private/TileMapRenderer.cpp | Adds GetCellWorldLocation, the one place a grid cell becomes a world position. |
+| Public/GrantMoneyGameMode.h, Private/GrantMoneyGameMode.cpp | Overrides SpawnDefaultPawnFor and adds FindSafeSpawnLocation. The camera now spawns on the character instead of at the PlayerStart, so it doesn't jump on the first frame. |
+| docs/course/Module2-BringingTheWorldToLife/Sprint1/GMS-106-ScriptDocumentation.md (new) | Task guide in the GMS-111 style: steps, design decision, capture list, AI log, PIE checklist. |
+
+The player character, MapArrays, the generated map files, and all .umap/.uasset files are untouched.
+
+One thing that shaped the design: the player's pawn spawns before the renderer's BeginPlay builds the ground and walls. A collision check at spawn time can't see the walls, so wall safety has to come from the map data, and the overlap check only catches placed props.
+
+Testing so far
+- Compile: Build.bat GrantMoneyEditor Win64 Development succeeded. The only warnings are deprecation notices from engine headers.
+- Offline prediction: a script outside the repo applied the same rules to the generated arrays. It expects Level 1 to start at cell (32, 31) and Level 2 at (31, 31). That's a prediction, not an in-engine result.
+
+Your turn: Step 8 in the task doc is a PIE checklist covering:
+- both maps landing on the expected cell;
+- moving the PlayerStart off the map;
+- a blocking cube on the start cell;
+- an unregistered LevelToRender value, to confirm the error-and-fallback path.
+
+Please record the results there, along with screenshots 06–09.
+
+Known limitations
+- There's no per-map "preferred start cell" setting yet.
+- If a level has more than one renderer, the first one found is used, with a warning.
+- The PlayerStart fallback isn't itself checked for safety.
+
+Suggested commit message (nothing is staged or committed):
+GMS-106: spawn the player on a safe cell of the generated map
+
+==============================================================================
+# PROMPT 3
+==============================================================================
+
+Compile this session into a text prompt document separated by my prompts and your response in the docs/course/Module2/Prompt/Sprint1 folder.
+
+# RESPONSE
+
+[Read the existing OpeningPrompt, AfterCharacterClass and CollisionTesting logs to match their format: no file extension, the prompt followed by "# RESPONSE". Wrote this file: docs/course/Module2-BringingTheWorldToLife/Prompt/Sprint1/GMS-106-SafePlayerStart]

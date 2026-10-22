@@ -203,6 +203,14 @@ void ATileMapRenderer::RebuildMap()
     BuildMap();
 }
 
+FVector ATileMapRenderer::GetCellWorldLocation(const FIntPoint& Cell) const
+{
+    // Same grid-to-local conversion BuildMap uses for the tiles.
+    return GetActorTransform().TransformPosition(
+        FVector(Cell.X * TileSize, Cell.Y * TileSize, 0.0f)
+    );
+}
+
 void ATileMapRenderer::ClearGeneratedComponents()
 {
     // Find by tag rather than a cached list: the tag survives any copy of
