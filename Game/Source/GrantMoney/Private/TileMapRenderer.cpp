@@ -142,6 +142,9 @@ void ATileMapRenderer::PostEditChangeProperty(
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallHeight)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, WallThickness)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, BoundaryMaterial)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bGenerateGroundCollision)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, GroundCollisionThickness)
+        || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, GroundCollisionProfile)
         || PropertyName == GET_MEMBER_NAME_CHECKED(ATileMapRenderer, bPreviewInEditor);
 
     if (!bAffectsMap)
@@ -200,6 +203,14 @@ void ATileMapRenderer::RebuildMap()
     BuildMap();
 }
 
+FVector ATileMapRenderer::GetCellWorldLocation(const FIntPoint& Cell) const
+{
+    // Same grid-to-local conversion BuildMap uses for the tiles.
+    return GetActorTransform().TransformPosition(
+        FVector(Cell.X * TileSize, Cell.Y * TileSize, 0.0f)
+    );
+}
+
 void ATileMapRenderer::ClearGeneratedComponents()
 {
     // Find by tag rather than a cached list: the tag survives any copy of
@@ -219,6 +230,67 @@ void ATileMapRenderer::ClearGeneratedComponents()
         RemoveInstanceComponent(Component);
         Component->DestroyComponent();
     }
+}
+
+void ATileMapRenderer::BuildGroundCollision(const TArray<FTransform>& TileTransforms)
+{
+    if (!BoundaryCubeMesh || TileTransforms.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("TileMapRenderer: Ground collision skipped (no cube mesh or no tiles)."));
+        return;
+    }
+
+    // The engine cube is 100 units on each side.
+    constexpr float EngineCubeSize = 100.0f;
+
+    const FVector SlabScale(
+        TileSize / EngineCubeSize,
+        TileSize / EngineCubeSize,
+        GroundCollisionThickness / EngineCubeSize
+    );
+
+    TArray<FTransform> SlabTransforms;
+    SlabTransforms.Reserve(TileTransforms.Num());
+
+    for (const FTransform& TileTransform : TileTransforms)
+    {
+        FVector SlabLocation = TileTransform.GetLocation();
+        SlabLocation.Z -= GroundCollisionThickness * 0.5f;
+
+        SlabTransforms.Emplace(FRotator::ZeroRotator, SlabLocation, SlabScale);
+    }
+
+    const FName ComponentName = MakeUniqueObjectName(
+        this,
+        UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+        TEXT("GroundCollision")
+    );
+
+    UHierarchicalInstancedStaticMeshComponent* Ground =
+        NewObject<UHierarchicalInstancedStaticMeshComponent>(this, ComponentName);
+
+    if (!Ground)
+    {
+        return;
+    }
+
+    MarkAsGenerated(Ground);
+    AddInstanceComponent(Ground);
+
+    Ground->SetupAttachment(SceneRoot);
+    Ground->SetStaticMesh(BoundaryCubeMesh);
+
+    // Collision only: the tile planes are what the player sees.
+    Ground->SetVisibility(false);
+    Ground->SetCastShadow(false);
+    Ground->SetCanEverAffectNavigation(false);
+    Ground->SetCollisionProfileName(GroundCollisionProfile);
+    Ground->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+    Ground->RegisterComponent();
+    Ground->AddInstances(SlabTransforms, false);
+
+    UE_LOG(LogTemp, Log, TEXT("TileMapRenderer: Created %d ground collision slabs."), SlabTransforms.Num());
 }
 
 void ATileMapRenderer::BuildMap()
@@ -284,6 +356,11 @@ void ATileMapRenderer::BuildMap()
     // Tile IDs with no usable asset path; logged once per ID, not per cell.
     TSet<int32> InvalidTileIds;
 
+    // Location of every playable cell (Valid and Ground != 0), whether or not its
+    // tile could be drawn. Matches the cells the boundary walls enclose, so the
+    // floor never has a hole inside the walls.
+    TArray<FTransform> PlayableCellTransforms;
+
     int32 TilesCreated = 0;
 
     // The generated data uses [x][y].
@@ -304,6 +381,12 @@ void ATileMapRenderer::BuildMap()
             {
                 continue;
             }
+
+            PlayableCellTransforms.Emplace(
+                FRotator::ZeroRotator,
+                FVector(X * TileSize, Y * TileSize, 0.0f),
+                FVector::OneVector
+            );
 
             if (InvalidTileIds.Contains(TileId))
             {
@@ -362,7 +445,7 @@ void ATileMapRenderer::BuildMap()
                 TileGroup->SetupAttachment(SceneRoot);
                 TileGroup->SetStaticMesh(TilePlaneMesh);
 
-                // Ground tiles do not need collision yet.
+                // The tile planes are visual only; ground collision comes from BuildGroundCollision.
                 TileGroup->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
                 TileGroup->RegisterComponent();
@@ -445,6 +528,11 @@ void ATileMapRenderer::BuildMap()
         TEXT("TileMapRenderer finished. Created %d tiles."),
         TilesCreated
     );
+
+    if (bGenerateGroundCollision)
+    {
+        BuildGroundCollision(PlayableCellTransforms);
+    }
 
     if (bGenerateBoundaries)
     {

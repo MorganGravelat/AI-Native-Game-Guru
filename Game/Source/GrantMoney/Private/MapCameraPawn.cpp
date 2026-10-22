@@ -20,6 +20,9 @@ AMapCameraPawn::AMapCameraPawn()
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Follow after the character has moved this frame, so the view is never a frame behind.
+	PrimaryActorTick.TickGroup = TG_PostPhysics;
+
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
 
@@ -270,27 +273,42 @@ void AMapCameraPawn::HandleMoveCompleted(const FInputActionValue& Value)
 
 void AMapCameraPawn::HandleTurn(const FInputActionValue& Value)
 {
-	// Mouse delta is already per-frame movement, so it is not scaled by DeltaTime.
-	AddActorWorldRotation(FRotator(0.0f, Value.Get<float>() * TurnSensitivity, 0.0f));
+	AddCameraYaw(Value.Get<float>());
 }
 
 void AMapCameraPawn::HandleLookUp(const FInputActionValue& Value)
+{
+	AddCameraPitch(Value.Get<float>());
+}
+
+void AMapCameraPawn::HandleZoom(const FInputActionValue& Value)
+{
+	AddCameraZoom(Value.Get<float>());
+}
+
+void AMapCameraPawn::AddCameraYaw(float Value)
+{
+	// Mouse delta is already per-frame movement, so it is not scaled by DeltaTime.
+	AddActorWorldRotation(FRotator(0.0f, Value * TurnSensitivity, 0.0f));
+}
+
+void AMapCameraPawn::AddCameraPitch(float Value)
 {
 	const float PitchMin = FMath::Min(MinPitch, MaxPitch);
 	const float PitchMax = FMath::Max(MinPitch, MaxPitch);
 	const float Direction = bInvertPitch ? -1.0f : 1.0f;
 
-	CurrentPitch = FMath::Clamp(CurrentPitch + Value.Get<float>() * PitchSensitivity * Direction, PitchMin, PitchMax);
+	CurrentPitch = FMath::Clamp(CurrentPitch + Value * PitchSensitivity * Direction, PitchMin, PitchMax);
 	SpringArm->SetRelativeRotation(FRotator(CurrentPitch, 0.0f, 0.0f));
 }
 
-void AMapCameraPawn::HandleZoom(const FInputActionValue& Value)
+void AMapCameraPawn::AddCameraZoom(float Value)
 {
 	const float ArmMin = FMath::Min(MinArmLength, MaxArmLength);
 	const float ArmMax = FMath::Max(MinArmLength, MaxArmLength);
 
 	// Wheel up (positive) zooms in.
-	DesiredArmLength = FMath::Clamp(DesiredArmLength - Value.Get<float>() * ZoomStep, ArmMin, ArmMax);
+	DesiredArmLength = FMath::Clamp(DesiredArmLength - Value * ZoomStep, ArmMin, ArmMax);
 }
 
 FVector AMapCameraPawn::ConstrainLocation(const FVector& Location) const

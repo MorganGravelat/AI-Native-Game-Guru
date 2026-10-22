@@ -1,0 +1,97 @@
+For now can we setup a very basic collision system that can be iterated or made different later for testing?
+
+# RESPONSE
+
+I'll look at how the renderer builds the tile components before choosing where collision should go.
+
+Read , lines 300 to 420
+Completed with input: {
+  "path": "c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp",
+  "view_range": [
+    300,
+    420
+  ]
+}
+
+Search for `UPROPERTY|UFUNCTION|void |bool |float |int32 |Category`
+
+Read 
+Completed with input: {
+  "path": "c:\\Dev\\AI-Native-Game-Guru\\docs\\course\\Module2-BringingTheWorldToLife\\Prompt\\Sprint1\\AfterCharacterClass"
+}
+
+Read 
+Completed with input: {
+  "path": "c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Public\\TileMapRenderer.h"
+}
+
+Read , lines 1 to 300
+Completed with input: {
+  "path": "c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp",
+  "view_range": [
+    1,
+    300
+  ]
+}
+
+Search for `Collision|Box|SetBoxExtent|Wall|CreateDefault|NewObject`
+
+Read , lines 418 to 520
+Completed with input: {
+  "path": "c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp",
+  "view_range": [
+    418,
+    520
+  ]
+}
+
+Edit 
+
+Edit 
+Completed with input: {"path":"c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Public\\TileMapRenderer.h"}
+
+Edit 
+
+Edit 
+Completed with input: {"path":"c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp"}
+
+Edit 
+Completed with input: {"path":"c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp"}
+
+Edit 
+Completed with input: {"path":"c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp"}
+
+Edit 
+Completed with input: {"path":"c:\\Dev\\AI-Native-Game-Guru\\Game\\Source\\GrantMoney\\Private\\TileMapRenderer.cpp"}
+
+Edit 
+
+I've added the ground collision but haven't compiled or run it, so none of it is confirmed yet.
+
+## What changed
+
+Only `TileMapRenderer.h` and `TileMapRenderer.cpp` changed.
+
+- **Ground slabs:** `BuildGroundCollision` adds one hidden, collision-only box under each rendered tile. It uses the same engine cube and instanced-mesh approach as the boundary walls.
+  - The top surface sits at Z = 0, flush with the tiles, so the capsule stands where the tiles are drawn.
+  - The slabs only exist under tiles that were actually rendered, so the footprint matches the map, including any holes.
+  - The slabs are tagged as generated, so Rebuild Map and the editor preview clear and rebuild them like everything else.
+- **New settings** in a Collision category on `ATileMapRenderer`, all editable in Details with no code change:
+  - `bGenerateGroundCollision` (default on) switches the floor off.
+  - `GroundCollisionThickness` (default 20).
+  - `GroundCollisionProfile` (default `BlockAll`) is the profile name, so you can try different blocking rules later.
+- **Property list:** the new settings are added to the list of properties that trigger a map rebuild in the editor.
+- **Comment:** one stale comment ("do not need collision yet") was updated.
+- **Existing behaviour:** tile rendering, `MapArrays`, the camera, the pause system and the boundary walls (already `BlockAll`) are untouched.
+
+## Compile and test
+
+1. Close the Editor. Build `GrantMoneyEditor` (Development Editor, Win64) in Visual Studio, then reopen `PlayGame1`.
+2. Select the `TileMapRenderer` actor. Confirm the Collision category appears in Details, then click Rebuild Map.
+3. In the Output Log, look for `Created N ground collision slabs`. N should equal the "Created N tiles" count.
+4. Press Play, then run `show Collision` and `slomo 1`. You should see slab wireframes under the tiles, plus the capsule resting at the PlayerStart.
+5. Press F8 and select the character in the Outliner. Its Z should stay roughly constant and not fall.
+6. Check the same things as before: possession log, static camera view, tile rendering and pause.
+7. Toggle `bGenerateGroundCollision` off and replay. The character should fall again, which confirms the setting works.
+
+If the capsule is still invisible, report its Z in the Outliner after F8.
