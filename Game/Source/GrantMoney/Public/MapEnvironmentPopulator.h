@@ -7,10 +7,11 @@
 
 class USceneComponent;
 class UHierarchicalInstancedStaticMeshComponent;
-class UMaterialInterface;
+struct FGrantMoneyMapData;
 
-// Thin spawner: asks FEnvironmentPlacer where blocks go, then renders them as
-// instanced cubes. Place one in PlayGame at (0,0,0), next to TileMapRenderer.
+// Thin spawner: for each rule, asks FEnvironmentPlacer where assets go (using
+// that rule's settings), then renders the rule's asset at those cells.
+// Place one in PlayGame at (0,0,0), next to TileMapRenderer.
 UCLASS()
 class GRANTMONEY_API AMapEnvironmentPopulator : public AActor
 {
@@ -23,40 +24,34 @@ public:
     UPROPERTY(EditAnywhere, Category = "Map", meta = (ClampMin = "1"))
     int32 LevelToRender = 1;
 
-    UPROPERTY(EditAnywhere, Category = "Environment")
-    FEnvironmentSettings Settings;
-
-    // Optional. Leave empty to use the engine's default material.
-    UPROPERTY(EditAnywhere, Category = "Environment|Visual")
-    TObjectPtr<UMaterialInterface> BlockMaterial;
-
     // World units per cell. MUST match TileMapRenderer::TileSize (100),
     // which is private there, so it is duplicated here.
-    UPROPERTY(EditAnywhere, Category = "Environment|Visual", meta = (ClampMin = "1.0"))
+    UPROPERTY(EditAnywhere, Category = "Environment", meta = (ClampMin = "1.0"))
     float TileSize = 100.0f;
 
-    // World height of each block.
-    UPROPERTY(EditAnywhere, Category = "Environment|Visual", meta = (ClampMin = "1.0"))
-    float BlockHeight = 100.0f;
+    // Add one rule per asset type (trees on grass, rocks on stone, ...).
+    UPROPERTY(EditAnywhere, Category = "Environment", meta = (TitleProperty = "Label"))
+    TArray<FEnvironmentAssetRule> Rules;
 
-    // Fraction of the footprint the cube fills (leaves a visible gap).
-    UPROPERTY(EditAnywhere, Category = "Environment|Visual", meta = (ClampMin = "0.1", ClampMax = "1.0"))
-    float FootprintFill = 0.8f;
-
-    // Small lift so cube bottoms never z-fight the ground planes.
-    UPROPERTY(EditAnywhere, Category = "Environment|Visual")
-    float ZOffset = 1.0f;
-
-    // Clears and rebuilds all blocks from the current settings.
+    // Removes everything previously generated, then rebuilds from all rules.
     void Populate();
+
+    // Removes generated instances and spawned actors.
+    void ClearPopulated();
 
 protected:
     virtual void BeginPlay() override;
 
 private:
+    // Returns how many assets were placed for the rule.
+    int32 PopulateRule(int32 RuleIndex, const FGrantMoneyMapData& MapData);
+
     UPROPERTY()
     TObjectPtr<USceneComponent> SceneRoot;
 
-    UPROPERTY()
-    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> BlockInstances;
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> RuleComponents;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<AActor>> SpawnedActors;
 };

@@ -1,7 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/SubclassOf.h"
 #include "EnvironmentTypes.generated.h"
+
+class AActor;
+class UStaticMesh;
 
 // Tunable settings for the environment placer. Editable in the Details panel
 // of AMapEnvironmentPopulator.
@@ -45,4 +49,62 @@ struct GRANTMONEY_API FEnvironmentSettings
     // tile (so blocks do not hug roads). 0 = may touch the road edge.
     UPROPERTY(EditAnywhere, Category = "Environment|Tiles", meta = (ClampMin = "0"))
     int32 PathClearanceCells = 1;
+};
+
+// One "what goes where" rule: which tiles may receive which asset.
+// Example: Rule "Trees" = grass tile IDs + a tree mesh,
+//          Rule "Rocks" = stone tile IDs + a rock mesh.
+// The placement settings (tiles, density, spacing, seed...) are the same
+// FEnvironmentSettings the placer already uses; they are NOT changed here.
+USTRUCT(BlueprintType)
+struct GRANTMONEY_API FEnvironmentAssetRule
+{
+    GENERATED_BODY()
+
+    // Name shown in the Details panel list.
+    UPROPERTY(EditAnywhere, Category = "Rule")
+    FString Label = TEXT("New Rule");
+
+    UPROPERTY(EditAnywhere, Category = "Rule")
+    bool bEnabled = true;
+
+    // Drag a Static Mesh from the Content Browser here (recommended: rendered
+    // as cheap instances).
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    TObjectPtr<UStaticMesh> Mesh;
+
+    // Optional alternative: a Blueprint "prefab" Actor. If set, it is used
+    // INSTEAD of Mesh and one Actor is spawned per placement (slower).
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    TSubclassOf<AActor> ActorClass;
+
+    // Mesh only: scale the mesh uniformly so its widest side fills
+    // FootprintCells * TileSize * FitFill. Turn off to use the mesh's own size.
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    bool bFitToFootprint = true;
+
+    UPROPERTY(EditAnywhere, Category = "Asset", meta = (ClampMin = "0.1", ClampMax = "1.0", EditCondition = "bFitToFootprint"))
+    float FitFill = 0.8f;
+
+    // Extra uniform scale multiplier applied on top.
+    UPROPERTY(EditAnywhere, Category = "Asset", meta = (ClampMin = "0.01"))
+    float Scale = 1.0f;
+
+    // Each placement gets a random scale multiplier between X (min) and Y (max).
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    FVector2D ScaleVariation = FVector2D(1.0, 1.0);
+
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    bool bRandomYaw = true;
+
+    // Lift above the ground plane (world units).
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    float ZOffset = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Asset")
+    bool bCollision = false;
+
+    // Tiles, density, seed, footprint, spacing, clearance, connectivity.
+    UPROPERTY(EditAnywhere, Category = "Placement")
+    FEnvironmentSettings Settings;
 };
