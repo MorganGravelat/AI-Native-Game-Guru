@@ -55,7 +55,7 @@
 import os
 import unreal
 
-SOURCE_DIR = r"C:\survivor\Tilegen\Tiles"
+SOURCE_DIR = r"C:\Users\apaxm\TileGenWorkspace\Tiles"
 DEST_PATH  = "/Game/Tiles"
 
 tools = unreal.AssetToolsHelpers.get_asset_tools()
