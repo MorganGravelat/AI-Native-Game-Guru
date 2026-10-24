@@ -24,7 +24,7 @@ ASkyLightingActor::ASkyLightingActor()
 	Sun->SetupAttachment(Root);
 	Sun->SetMobility(EComponentMobility::Movable);
 	Sun->SetRelativeRotation(FRotator(-50.0, 40.0, 0.0));
-	Sun->SetIntensity(10.0f);
+	Sun->SetIntensity(5.0f);
 	Sun->SetAtmosphereSunLight(true);
 	Sun->SetAtmosphereSunLightIndex(0);
 
