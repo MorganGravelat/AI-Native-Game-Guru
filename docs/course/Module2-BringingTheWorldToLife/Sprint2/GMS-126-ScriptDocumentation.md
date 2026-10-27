@@ -3,7 +3,7 @@
 
 This document covers **one Jira issue only** and only the implementation session (the first prompt and the work it caused). Branching, committing and publishing are not documented here.
 
-Status of this document: **Draft, needs review.** The code compiles. The in-Editor behaviour was manually tested by Julio Maldonado.
+Status of this document: **Draft, needs review.** The code compiles. The in-Editor behavior was manually tested by Julio Maldonado.
 
 ---
 
