@@ -7,6 +7,7 @@
 #include "GrantMoneyGameMode.generated.h"
 
 class AMapCameraPawn;
+class ASkyLightingActor;
 
 /**
  * Spawns the player character on a safe cell of the level's generated map and
@@ -27,6 +28,9 @@ public:
 
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
+	// Adds the skybox and global lighting to levels that do not have one.
+	virtual void BeginPlay() override;
+
 	// Spawns on the generated map's safe start. Falls back to StartSpot (the PlayerStart) with an error log.
 	virtual APawn* SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot) override;
 
@@ -42,6 +46,10 @@ protected:
 	// Defaults to AMapCameraPawn.
 	UPROPERTY(EditDefaultsOnly, Category = "Classes")
 	TSubclassOf<AMapCameraPawn> CameraPawnClass;
+
+	// Defaults to ASkyLightingActor. Spawned only when the level has no ASkyLightingActor. Null disables it.
+	UPROPERTY(EditDefaultsOnly, Category = "Classes")
+	TSubclassOf<ASkyLightingActor> SkyLightingClass;
 
 private:
 	UPROPERTY(Transient)

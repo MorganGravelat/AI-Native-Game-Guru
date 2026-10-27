@@ -11,6 +11,10 @@
 #include "MapArrays.h"
 #include "MapCameraPawn.h"
 #include "PlayerSpawnResolver.h"
+#include "Components/SkyAtmosphereComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/SkyLight.h"
+#include "SkyLightingActor.h"
 #include "TileMapRenderer.h"
 
 namespace
@@ -23,7 +27,42 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 {
 	PlayerCharacterClass = AGrantMoneyPlayerCharacter::StaticClass();
 	CameraPawnClass = AMapCameraPawn::StaticClass();
+	SkyLightingClass = ASkyLightingActor::StaticClass();
 	DefaultPawnClass = PlayerCharacterClass;
+}
+
+void AGrantMoneyGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	UWorld* World = GetWorld();
+	if (!World || !SkyLightingClass)
+	{
+		return;
+	}
+
+	// A sky lighting actor placed in the level overrides the default one.
+	for (TActorIterator<ASkyLightingActor> It(World); It; ++It)
+	{
+		return;
+	}
+
+	// Lights and atmospheres placed by hand would stack with the default sky, so say so.
+	if (TActorIterator<ASkyAtmosphere>(World) || TActorIterator<ADirectionalLight>(World) || TActorIterator<ASkyLight>(World))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GrantMoneyGameMode: the level already has a sky atmosphere or light; the default sky lighting adds to it."));
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	if (World->SpawnActor<ASkyLightingActor>(SkyLightingClass, FTransform::Identity, SpawnParams))
+	{
+		UE_LOG(LogTemp, Log, TEXT("GrantMoneyGameMode: spawned default sky lighting."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: default sky lighting could not be spawned."));
+	}
 }
 
 UClass* AGrantMoneyGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
