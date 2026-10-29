@@ -241,12 +241,12 @@ void ATileMapRenderer::BuildGroundCollision(const TArray<FTransform>& TileTransf
     }
 
     // The engine cube is 100 units on each side.
-    constexpr float EngineCubeSize = 100.0f;
+    constexpr float SlabCubeSize = 100.0f;
 
     const FVector SlabScale(
-        TileSize / EngineCubeSize,
-        TileSize / EngineCubeSize,
-        GroundCollisionThickness / EngineCubeSize
+        TileSize / SlabCubeSize,
+        TileSize / SlabCubeSize,
+        GroundCollisionThickness / SlabCubeSize
     );
 
     TArray<FTransform> SlabTransforms;
