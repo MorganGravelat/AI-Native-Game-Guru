@@ -7,6 +7,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GrantMoneyPlayerCharacter.generated.h"
 
+class UGrantMoneyCharacterVisualData;
 class UInputAction;
 class UStaticMeshComponent;
 class UAnimationAsset;
@@ -56,9 +57,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Animation", meta = (ClampMin = "0"))
 	float JogSpeedThreshold = 5.0f;
 	
+	// Optional override of the built-in Manny defaults. If the asset doesn't
+	// exist, the defaults set in the constructor are used.
+	UPROPERTY(EditAnywhere, Category = "Visual")
+	TSoftObjectPtr<UGrantMoneyCharacterVisualData> VisualData;
 private:
 	void PlayLocomotionAnimation(UAnimationAsset* Animation);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimationAsset> CurrentAnimation;
+	
+	void ApplyVisualData();
+
+	// False when a data asset supplies its own animation setup.
+	bool bUseBuiltInLocomotion = true;
 };

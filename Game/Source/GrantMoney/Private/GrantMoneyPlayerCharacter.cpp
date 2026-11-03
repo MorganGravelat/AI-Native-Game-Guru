@@ -2,6 +2,7 @@
 
 
 #include "GrantMoneyPlayerCharacter.h"
+#include "GrantMoneyCharacterVisualData.h"
 
 #include "Camera/PlayerCameraManager.h"
 #include "Components/StaticMeshComponent.h"
@@ -34,6 +35,9 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	{
 		MoveAction = MoveActionFinder.Object;
 	}
+	
+	VisualData = TSoftObjectPtr<UGrantMoneyCharacterVisualData>(
+	FSoftObjectPath(TEXT("/Game/Characters/Player/DA_PlayerVisual.DA_PlayerVisual")));
 
 	USkeletalMeshComponent* CharacterMesh = GetMesh();
 	CharacterMesh->SetRelativeLocation(FVector(0.0, 0.0, -GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
@@ -122,12 +126,26 @@ void AGrantMoneyPlayerCharacter::HandleMove(const FInputActionValue& Value)
 void AGrantMoneyPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	PlayLocomotionAnimation(IdleAnimation);
+
+	ApplyVisualData();
+
+	if (bUseBuiltInLocomotion)
+	{
+		PlayLocomotionAnimation(IdleAnimation);
+	}
+
+	// Only the built-in idle/jog logic needs the tick.
+	SetActorTickEnabled(bUseBuiltInLocomotion);
 }
 
 void AGrantMoneyPlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	
+	if (!bUseBuiltInLocomotion)
+	{
+		return;
+	}
 
 	const float GroundSpeed = GetVelocity().Size2D();
 	PlayLocomotionAnimation(GroundSpeed > JogSpeedThreshold ? JogAnimation : IdleAnimation);
@@ -144,4 +162,47 @@ void AGrantMoneyPlayerCharacter::PlayLocomotionAnimation(UAnimationAsset* Animat
 	CurrentAnimation = Animation;
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	GetMesh()->PlayAnimation(Animation, true);
+}
+
+void AGrantMoneyPlayerCharacter::ApplyVisualData()
+{
+	// No data asset: keep the built-in Manny defaults.
+	if (VisualData.IsNull())
+	{
+		return;
+	}
+
+	const UGrantMoneyCharacterVisualData* Data = VisualData.LoadSynchronous();
+	if (!Data)
+	{
+		UE_LOG(LogTemp, Log, TEXT("GrantMoneyPlayerCharacter: %s not found. Using built-in Manny defaults."), *VisualData.ToString());
+		return;
+	}
+
+	USkeletalMeshComponent* CharacterMesh = GetMesh();
+
+	if (USkeletalMesh* LoadedMesh = Data->SkeletalMesh.LoadSynchronous())
+	{
+		CharacterMesh->SetSkeletalMesh(LoadedMesh);
+	}
+
+	// Feet at the capsule's base, plus any per-asset adjustment.
+	const float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	CharacterMesh->SetRelativeLocation(FVector(0.0, 0.0, -HalfHeight) + Data->MeshOffset);
+	CharacterMesh->SetRelativeRotation(Data->MeshRotation);
+	CharacterMesh->SetRelativeScale3D(Data->MeshScale);
+
+	// An Animation Blueprint or a preview animation replaces the built-in idle/jog logic.
+	if (UClass* LoadedAnimClass = Data->AnimClass.LoadSynchronous())
+	{
+		bUseBuiltInLocomotion = false;
+		CharacterMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+		CharacterMesh->SetAnimInstanceClass(LoadedAnimClass);
+	}
+	else if (UAnimationAsset* LoadedAnim = Data->PreviewAnimation.LoadSynchronous())
+	{
+		bUseBuiltInLocomotion = false;
+		CharacterMesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		CharacterMesh->PlayAnimation(LoadedAnim, true);
+	}
 }
