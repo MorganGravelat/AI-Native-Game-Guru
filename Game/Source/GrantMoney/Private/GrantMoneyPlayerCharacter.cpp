@@ -34,19 +34,22 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 		MoveAction = MoveActionFinder.Object;
 	}
 
-	// Slightly narrower front-to-back than side-to-side, so the facing direction is visible.
-	// Sized to fit inside the default capsule (radius 34, half height 88).
-	PlaceholderMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderMesh"));
-	PlaceholderMesh->SetupAttachment(RootComponent);
-	PlaceholderMesh->SetRelativeScale3D(FVector(0.4, 0.55, 1.7));
-	PlaceholderMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PlaceholderMesh->SetCanEverAffectNavigation(false);
+	USkeletalMeshComponent* CharacterMesh = GetMesh();
+	CharacterMesh->SetRelativeLocation(FVector(0.0, 0.0, -GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+	CharacterMesh->SetRelativeRotation(FRotator(0.0, -90.0, 0.0));
+	CharacterMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CharacterMesh->SetGenerateOverlapEvents(false);
+	CharacterMesh->SetCanEverAffectNavigation(false);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannyFinder(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
 
-	if (CubeFinder.Succeeded())
+	if (MannyFinder.Succeeded())
 	{
-		PlaceholderMesh->SetStaticMesh(CubeFinder.Object);
+		CharacterMesh->SetSkeletalMesh(MannyFinder.Object);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GrantMoneyPlayerCharacter: Manny mesh is not available at /Game/Characters/Mannequins/Meshes/SKM_Manny_Simple."));
 	}
 }
 

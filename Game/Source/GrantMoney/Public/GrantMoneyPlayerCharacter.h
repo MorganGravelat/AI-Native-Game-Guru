@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Components/CapsuleComponent.h"
 #include "GrantMoneyPlayerCharacter.generated.h"
 
 class UInputAction;
