@@ -9,6 +9,7 @@
 
 class UInputAction;
 class UStaticMeshComponent;
+class UAnimationAsset;
 struct FInputActionValue;
 
 /**
@@ -26,6 +27,7 @@ public:
 	AGrantMoneyPlayerCharacter();
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void Tick(float DeltaSeconds) override;
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
@@ -41,4 +43,22 @@ protected:
 	// Collision comes from the capsule, so this has none.
 	UPROPERTY(VisibleAnywhere, Category = "Placeholder")
 	TObjectPtr<UStaticMeshComponent> PlaceholderMesh;
+	
+	virtual void BeginPlay() override;
+
+	UPROPERTY(EditAnywhere, Category = "Animation")
+	TObjectPtr<UAnimationAsset> IdleAnimation;
+
+	UPROPERTY(EditAnywhere, Category = "Animation")
+	TObjectPtr<UAnimationAsset> JogAnimation;
+
+	// Ground speed (cm/s) above which the jog plays.
+	UPROPERTY(EditAnywhere, Category = "Animation", meta = (ClampMin = "0"))
+	float JogSpeedThreshold = 5.0f;
+	
+private:
+	void PlayLocomotionAnimation(UAnimationAsset* Animation);
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimationAsset> CurrentAnimation;
 };

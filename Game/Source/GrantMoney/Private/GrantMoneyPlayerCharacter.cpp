@@ -13,11 +13,12 @@
 #include "InputActionValue.h"
 #include "Math/RotationMatrix.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Animation/AnimationAsset.h"
 
 AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 {
 	// Nothing to update per frame yet.
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	// Movement is relative to the camera, so the controller's rotation must not turn the character.
 	bUseControllerRotationPitch = false;
@@ -51,6 +52,14 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("GrantMoneyPlayerCharacter: Manny mesh is not available at /Game/Characters/Mannequins/Meshes/SKM_Manny_Simple."));
 	}
+	
+	static ConstructorHelpers::FObjectFinder<UAnimationAsset> IdleFinder(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"));
+	if (IdleFinder.Succeeded()) { IdleAnimation = IdleFinder.Object; }
+
+	static ConstructorHelpers::FObjectFinder<UAnimationAsset> JogFinder(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.MF_Unarmed_Jog_Fwd"));
+	if (JogFinder.Succeeded()) { JogAnimation = JogFinder.Object; }
+	
+	CharacterMesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 }
 
 void AGrantMoneyPlayerCharacter::PossessedBy(AController* NewController)
@@ -110,3 +119,29 @@ void AGrantMoneyPlayerCharacter::HandleMove(const FInputActionValue& Value)
 	AddMovementInput(YawMatrix.GetUnitAxis(EAxis::Y), Input.X);
 }
 
+void AGrantMoneyPlayerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	PlayLocomotionAnimation(IdleAnimation);
+}
+
+void AGrantMoneyPlayerCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	const float GroundSpeed = GetVelocity().Size2D();
+	PlayLocomotionAnimation(GroundSpeed > JogSpeedThreshold ? JogAnimation : IdleAnimation);
+}
+
+void AGrantMoneyPlayerCharacter::PlayLocomotionAnimation(UAnimationAsset* Animation)
+{
+	// Restart only when the desired animation actually changes.
+	if (!Animation || Animation == CurrentAnimation)
+	{
+		return;
+	}
+
+	CurrentAnimation = Animation;
+	GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	GetMesh()->PlayAnimation(Animation, true);
+}
