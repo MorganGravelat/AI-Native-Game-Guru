@@ -9,6 +9,8 @@
 class UAnimationAsset;
 class UInputAction;
 class UGrantMoneyCharacterVisualData;
+class UHealthComponent;
+class UStatsComponent;
 struct FInputActionValue;
 
 /**
@@ -16,8 +18,9 @@ struct FInputActionValue;
  * CharacterMovementComponent. Moves relative to the active camera's yaw.
  * Looks like Epic's Manny (SKM_Manny_Simple) and switches between an idle and
  * a jog animation based on ground speed. A UGrantMoneyCharacterVisualData asset
- * can override the mesh, animation and placement without recompiling. Combat is
- * added in a later ticket. The view comes from the map camera, not this class.
+ * can override the mesh, animation and placement without recompiling. Health
+ * comes from a UHealthComponent backed by a UStatsComponent. The view comes from
+ * the map camera, not this class.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyPlayerCharacter : public ACharacter
@@ -30,7 +33,18 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	UStatsComponent* GetStats() const { return Stats; }
+	UHealthComponent* GetHealth() const { return Health; }
+
 protected:
+	// Max health and future player stats. Buffs and upgrades add modifiers here.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	TObjectPtr<UStatsComponent> Stats;
+
+	// Current health; reads MaxHealth from Stats.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	TObjectPtr<UHealthComponent> Health;
+
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;
 

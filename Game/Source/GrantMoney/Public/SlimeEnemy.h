@@ -10,8 +10,8 @@ class UStaticMeshComponent;
 
 /**
  * The first enemy type. Targeting, pursuit, speed and stopping distance all come
- * from AEnemyBase; this class only supplies slime defaults and a temporary visual.
- * Emergence, climbing, damage and death are added in later tickets.
+ * from AEnemyBase, as do health, contact damage and death; this class only supplies
+ * slime defaults and a temporary visual. Emergence and climbing are added in later tickets.
  */
 UCLASS()
 class GRANTMONEY_API ASlimeEnemy : public AEnemyBase

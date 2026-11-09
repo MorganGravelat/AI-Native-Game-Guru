@@ -3,8 +3,55 @@
 
 #include "EnemyBase.h"
 
+#include "CombatEventsSubsystem.h"
+#include "ContactDamageComponent.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/DamageType.h"
+#include "HAL/IConsoleManager.h"
+#include "HealthComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "StatsComponent.h"
+
+namespace
+{
+	// Designers can override these per enemy on the Stats component.
+	constexpr float DefaultEnemyMaxHealth = 30.0f;
+	constexpr float DefaultEnemyContactDamage = 10.0f;
+	constexpr float DefaultEnemyAttackInterval = 1.0f; // seconds between hits
+
+#if !UE_BUILD_SHIPPING
+	// Dev-only way to hurt enemies before weapons exist: "GrantMoney.DamageEnemies 10" in the PIE console.
+	// Goes through UGameplayStatics::ApplyDamage, the same path weapons will use.
+	FAutoConsoleCommandWithWorldAndArgs GDamageEnemiesCommand(
+		TEXT("GrantMoney.DamageEnemies"),
+		TEXT("Dev only. Damages every enemy in the world. Usage: GrantMoney.DamageEnemies [Amount=10]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (!World)
+			{
+				return;
+			}
+
+			const float Amount = Args.Num() > 0 ? FCString::Atof(*Args[0]) : 10.0f;
+
+			// Collect first: an enemy killed here may be destroyed while iterating.
+			TArray<AEnemyBase*> Enemies;
+			for (TActorIterator<AEnemyBase> It(World); It; ++It)
+			{
+				Enemies.Add(*It);
+			}
+
+			for (AEnemyBase* Enemy : Enemies)
+			{
+				UGameplayStatics::ApplyDamage(Enemy, Amount, nullptr, nullptr, UDamageType::StaticClass());
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("GrantMoney.DamageEnemies: applied %.1f damage to %d enemies."), Amount, Enemies.Num());
+		}));
+#endif
+}
 
 AEnemyBase::AEnemyBase()
 {
@@ -24,6 +71,51 @@ AEnemyBase::AEnemyBase()
 
 	// With no controller, character movement would otherwise not run at all.
 	Movement->bRunPhysicsWithNoController = true;
+
+	Stats = CreateDefaultSubobject<UStatsComponent>(TEXT("Stats"));
+	Stats->SetBaseStat(EGrantMoneyStat::MaxHealth, DefaultEnemyMaxHealth);
+	Stats->SetBaseStat(EGrantMoneyStat::ContactDamage, DefaultEnemyContactDamage);
+	Stats->SetBaseStat(EGrantMoneyStat::AttackInterval, DefaultEnemyAttackInterval);
+	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
+	ContactDamage = CreateDefaultSubobject<UContactDamageComponent>(TEXT("ContactDamage"));
+}
+
+void AEnemyBase::BeginPlay()
+{
+	Super::BeginPlay();
+
+	Health->OnDeath.AddDynamic(this, &AEnemyBase::HandleHealthDepleted);
+}
+
+void AEnemyBase::HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser)
+{
+	HandleDeath(DamageCauser);
+}
+
+void AEnemyBase::HandleDeath(AActor* Killer)
+{
+	// Stop chasing and hitting, and stop blocking the player or other enemies.
+	SetActorTickEnabled(false);
+	SetActorEnableCollision(false);
+	GetCharacterMovement()->DisableMovement();
+
+	// Report before destroying, so listeners can still read the enemy (location, stats, type).
+	if (UWorld* World = GetWorld())
+	{
+		if (UCombatEventsSubsystem* CombatEvents = World->GetSubsystem<UCombatEventsSubsystem>())
+		{
+			CombatEvents->NotifyEnemyKilled(this, Killer);
+		}
+	}
+
+	if (DeathCleanupDelay > 0.0f)
+	{
+		SetLifeSpan(DeathCleanupDelay);
+	}
+	else
+	{
+		Destroy();
+	}
 }
 
 void AEnemyBase::Tick(float DeltaTime)
@@ -37,6 +129,9 @@ void AEnemyBase::Tick(float DeltaTime)
 	}
 
 	MoveTowardTarget();
+
+	// The component checks reach and its own hit interval; most ticks it does nothing.
+	ContactDamage->TryApplyContactDamage(Target);
 }
 
 AActor* AEnemyBase::FindTarget() const

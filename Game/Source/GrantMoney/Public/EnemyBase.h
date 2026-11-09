@@ -6,10 +6,20 @@
 #include "GameFramework/Character.h"
 #include "EnemyBase.generated.h"
 
+class UContactDamageComponent;
+class UHealthComponent;
+class UStatsComponent;
+
 /**
  * Reusable base for simple enemies that walk straight at the player.
- * It only knows how to find a target and move toward it. There is no pathfinding,
- * and no AI controller is needed. Health, attacks and death are added in later tickets.
+ * It finds a target, moves toward it, and damages it on contact through a
+ * UContactDamageComponent (damage = the ContactDamage stat). There is no pathfinding,
+ * and no AI controller is needed.
+ *
+ * Enemies have health (max health = the MaxHealth stat) and take damage from
+ * UGameplayStatics::ApplyDamage. On death the enemy stops, reports itself to
+ * UCombatEventsSubsystem::OnEnemyKilled, then is destroyed after DeathCleanupDelay.
+ * Override HandleDeath for per-type death effects.
  * Derive from this class and change the properties; override FindTarget or
  * GetMoveDirection to change who is chased or how.
  */
@@ -40,7 +50,35 @@ public:
 	// The current target, or null if none has been found yet.
 	AActor* GetTarget() const { return Target; }
 
+	// Seconds a dead enemy stays in the level (stopped, no collision) before it is destroyed,
+	// e.g. for a death animation. 0 destroys it straight away.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat", meta = (ClampMin = "0.0", Units = "s"))
+	float DeathCleanupDelay = 0.0f;
+
+	UStatsComponent* GetStats() const { return Stats; }
+	UHealthComponent* GetHealth() const { return Health; }
+	UContactDamageComponent* GetContactDamage() const { return ContactDamage; }
+
 protected:
+	virtual void BeginPlay() override;
+
+	// Runs once when health reaches zero. Stops the enemy, reports the kill, and schedules destruction.
+	// Override to add per-type death effects; call Super to keep the cleanup and the kill event.
+	virtual void HandleDeath(AActor* Killer);
+
+	// Current health. Max health is the MaxHealth stat.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
+	TObjectPtr<UHealthComponent> Health;
+
+	// Enemy stats: MaxHealth, ContactDamage (how hard a touch hurts) and AttackInterval (seconds
+	// between hits, default 1). Override per enemy type; buffs and difficulty scaling add modifiers.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
+	TObjectPtr<UStatsComponent> Stats;
+
+	// Damages the target while touching it, using the stats above. Reach is set on the component.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")
+	TObjectPtr<UContactDamageComponent> ContactDamage;
+
 	// Returns the actor to chase, or null if there is none. Defaults to the first player's pawn.
 	virtual AActor* FindTarget() const;
 
@@ -56,6 +94,10 @@ protected:
 	void MoveTowardTarget();
 
 private:
+	// Bound to Health->OnDeath; forwards to HandleDeath.
+	UFUNCTION()
+	void HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser);
+
 	// Not saved or shown as an editable value; found again every run.
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Enemy|Debug")
 	TObjectPtr<AActor> Target;
