@@ -6,10 +6,8 @@
       "Read(**/Saved/**)",
       "Read(**/DerivedDataCache/**)",
       "Read(**/.git/**)",
-
       "Read(**/*.uasset)",
       "Read(**/*.umap)",
-
       "Read(**/*.dll)",
       "Read(**/*.exe)",
       "Read(**/*.lib)",
@@ -19,7 +17,6 @@
       "Read(**/*.pak)",
       "Read(**/*.ucas)",
       "Read(**/*.utoc)",
-
       "Read(**/*.png)",
       "Read(**/*.jpg)",
       "Read(**/*.jpeg)",
@@ -28,20 +25,30 @@
       "Read(**/*.bmp)",
       "Read(**/*.tga)",
       "Read(**/*.psd)",
-
       "Read(**/*.mp4)",
       "Read(**/*.mov)",
       "Read(**/*.avi)",
       "Read(**/*.mkv)",
       "Read(**/*.wav)",
       "Read(**/*.mp3)",
-
       "Read(**/*.zip)",
       "Read(**/*.7z)",
       "Read(**/*.rar)",
-
       "Read(**/.vs/**)",
       "Read(**/.vscode/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/claude_test_gate.py\"",
+            "timeout": 1800
+          }
+        ]
+      }
     ]
   }
 }

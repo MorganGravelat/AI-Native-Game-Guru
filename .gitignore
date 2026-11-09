@@ -96,3 +96,10 @@ venv/
 
 # Optional: If you use Rider's built-in compiler outputs or profiling
 Build/
+# Claude Code personal overrides (per-machine, never shared)
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Python caches
+__pycache__/
+*.pyc

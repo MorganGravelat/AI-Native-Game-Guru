@@ -69,6 +69,36 @@ Prioritize:
 - Prefer reusable/data-driven systems over map-specific hardcoded coordinates.
 - Preserve existing systems unless the requested change requires modifying them.
 
+## Testing Rules (mandatory)
+
+Every new C++ file with gameplay or logic code gets an Automation test in the same change.
+
+- Put the test next to the code in `Private/`, named `<ClassName>Tests.cpp`
+  (see `Game/Source/GrantMoney/Private/EnvironmentPlacerTests.cpp` for the house style).
+- Wrap the whole file in `#if WITH_DEV_AUTOMATION_TESTS` and include `Misc/AutomationTest.h`.
+- Use `IMPLEMENT_SIMPLE_AUTOMATION_TEST` (or `BEGIN_DEFINE_SPEC` for many related cases) with
+  `EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter`.
+- Test names: `GrantMoney.<Area>.<Class>.<Case>`, e.g. `GrantMoney.Environment.Placer.BoundsPaddingSpacing`.
+- Prefer testing pure logic against synthetic data (as the EnvironmentPlacer tests do) over
+  loading maps or assets.
+- When you change existing logic, update or add tests that cover the change.
+- Files with no testable logic (pure UI glue, module boilerplate) may skip tests only with a
+  comment line `// NO-TEST: <reason>` in the .cpp. Use this sparingly.
+
+Run the tests with:
+
+    python scripts/run_tests.py            # build GrantMoneyEditor + run GrantMoney.* tests
+    python scripts/run_tests.py --skip-build --filter GrantMoney.Environment
+
+The script finds Unreal Engine on any machine (UE_ROOT env var, else the .uproject's
+EngineAssociation via the registry / Epic launcher). Never hardcode an engine or user path.
+If it reports "Test setup problem", tell the user; don't work around it.
+
+A Stop hook (`scripts/claude_test_gate.py`, configured in `.claude/settings.json`) enforces this:
+it blocks finishing while a new .cpp lacks a test or the tests fail. Do not edit or disable the
+hook to get past it. If the Unreal Editor is open with Live Coding, the build fails; ask the user
+to close it.
+
 ## Workflow
 
 Before modifying code:
@@ -117,7 +147,7 @@ At the end of a task, be able to produce:
 ## Source Control
 
 - One Jira issue -> one branch -> one pull request.
-- Branch names should follow GMS-XXX-description.
+- Branch names should follow SCRUM-XXX-description (Jira keys are SCRUM-XXX; older GMS-XXX branches are legacy).
 - Do not commit generated Unreal folders.
 - Do not commit raw video recordings.
 - Unreal binary assets should use Git LFS where appropriate.
