@@ -13,10 +13,18 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GrantMoneyCharacterVisualData.h"
+#include "HealthComponent.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Math/RotationMatrix.h"
+#include "StatsComponent.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	// Starting max health. Designers can override it on the Stats component.
+	constexpr float DefaultMaxHealth = 100.0f;
+}
 
 AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 {
@@ -30,6 +38,11 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 
 	// Face the direction of travel.
 	GetCharacterMovement()->bOrientRotationToMovement = true;
+
+	// Combat. Health reads MaxHealth from Stats, so health buffs are stat modifiers.
+	Stats = CreateDefaultSubobject<UStatsComponent>(TEXT("Stats"));
+	Stats->SetBaseStat(EGrantMoneyStat::MaxHealth, DefaultMaxHealth);
+	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionFinder(TEXT("/Game/Input/IA_CameraMove.IA_CameraMove"));
 
