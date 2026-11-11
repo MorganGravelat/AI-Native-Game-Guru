@@ -50,6 +50,11 @@ public:
 	// The current target, or null if none has been found yet.
 	AActor* GetTarget() const { return Target; }
 
+	// Where the enemy died (world transform), captured at the start of death handling, before it
+	// stops and is removed. A drop system reads it from UCombatEventsSubsystem::OnEnemyKilled to
+	// spawn items at this spot. Identity until the enemy dies.
+	const FTransform& GetDeathTransform() const { return DeathTransform; }
+
 	// Seconds a dead enemy stays in the level (stopped, no collision) before it is destroyed,
 	// e.g. for a death animation. 0 destroys it straight away.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat", meta = (ClampMin = "0.0", Units = "s"))
@@ -104,4 +109,7 @@ private:
 
 	// Stops the "no target" warning from repeating every frame.
 	bool bLoggedMissingTarget = false;
+
+	// Set once, when the enemy dies.
+	FTransform DeathTransform;
 };

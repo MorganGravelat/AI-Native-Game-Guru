@@ -94,6 +94,9 @@ void AEnemyBase::HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* 
 
 void AEnemyBase::HandleDeath(AActor* Killer)
 {
+	// Record where the enemy died first, before it stops and is removed, so a drop system can use it.
+	DeathTransform = GetActorTransform();
+
 	// Stop chasing and hitting, and stop blocking the player or other enemies.
 	SetActorTickEnabled(false);
 	SetActorEnableCollision(false);

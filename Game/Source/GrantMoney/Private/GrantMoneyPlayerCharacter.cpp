@@ -17,6 +17,7 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Math/RotationMatrix.h"
+#include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -43,6 +44,9 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	Stats = CreateDefaultSubobject<UStatsComponent>(TEXT("Stats"));
 	Stats->SetBaseStat(EGrantMoneyStat::MaxHealth, DefaultMaxHealth);
 	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
+
+	// The player starts every run armed. The weapon starts firing when play begins.
+	StarterWeapon = CreateDefaultSubobject<UStarterWeaponComponent>(TEXT("StarterWeapon"));
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionFinder(TEXT("/Game/Input/IA_CameraMove.IA_CameraMove"));
 

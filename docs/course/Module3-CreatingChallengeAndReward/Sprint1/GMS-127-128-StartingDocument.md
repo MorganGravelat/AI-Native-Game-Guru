@@ -1382,34 +1382,44 @@ Whether each file below has been captured is for you to confirm. This table only
 
 Check each one off when the file exists in the shared media folder. **Nothing here has been captured yet, as far as the AI knows.** Folder: `Media/GMS127-128/`.
 
-| File | What to show | Notes |
-|---|---|---|
-| `00-baseline-no-enemies.mp4` / `.png` | The world with no enemy: walk around for 10–15 s | Retroactive: remove or hide the slime **without saving the map** |
-| `01-branch-created.png` | Terminal with `git branch --show-current` showing `GMS-127-128` | |
-| `02-ai-inspection-findings.png` | The AI's reply to the opening prompt | |
-| `03-player-class-and-spawn.png` | `GrantMoneyPlayerCharacter.h` and the game mode spawn override | |
-| `04-enemybase-header.png` | `EnemyBase.h`: the properties and the two virtual functions | |
-| `05-enemybase-details-panel.png` | Details panel of a placed enemy, `Enemy|Movement` category | |
-| `06-enemybase-compile-success.png` | Build output with `Result: Succeeded` | Keep failures too |
-| `07-slimeenemy-code.png` | `SlimeEnemy.cpp`, showing how little it contains | |
-| `08-slime-compile-success.png` | Build output with `Result: Succeeded` | |
-| `09-slime-placed-in-level.png` | The slime in `PlayGame1` and its Details panel | |
-| `10-test-a-one-slime.mp4` | Test A: Play, the chase, the stop, `show collision` | Main result clip |
-| `11-test-b-moving-player.mp4` | Test B: walk away, circle, reverse | |
-| `12-test-c-player-stops.mp4` | Test C: stop, wait, step away, stop again | |
-| `13-test-d-multiple-slimes.mp4` | Test D: four or five slimes at once | |
-| `14-test-e-no-valid-player.mp4` | Test E: no player, slimes idle | Say which method you used |
-| `14b-test-e-no-target-warning-log.png` | The Output Log with one warning per slime | |
-| `15-test-f-stop-restart-pie.mp4` | Test F: three starts and stops | |
-| `16-slowdown-distance-details.png` | Details panel with `SlowdownDistance` | |
-| `17-fast-slime-slowdown-50.mp4` | Fast slime (`MoveSpeed` about 800) trailing smoothly | Optional pair, for the before/after |
-| `18-fast-slime-slowdown-0-stutter.mp4` | The same test with `SlowdownDistance` 0, showing stutter | Optional pair |
-| `19-no-aicontroller-in-outliner.png` | World Outliner during Play with no `AIController` for the slime | |
-| `20-pursuit-review-findings.png` | The AI's reply to the Step 6 review | |
-| `21-decoupling-check.png` | A search of `EnemyBase` for `slime`, `MapArrays`, `TileMap` finding nothing | |
-| `22-multi-slime-bumping.mp4` | Slimes bumping and wobbling | Optional, only if you see it |
-| `23-git-status-final.png` | `git status` before committing | |
-| `24-final-verification.png` | Output Log with no enemy errors, beside the filled-in Result Summary | |
+**Paths.** All repo paths below are relative to the repo root, `C:\Dev\AI-Native-Game-Guru`. Line numbers are 1-based, as shown in VS Code.
+
+**Which version to photograph (important).** `main` has moved on since this work was merged: ticket SCRUM-33 added health, damage and death to `EnemyBase`, so `EnemyBase.h` and `EnemyBase.cpp` on `main` no longer match this document, and the line numbers differ. Take the **code** screenshots of `EnemyBase` from the GMS-127/128 commit, `aabbe52` (it is in `main`'s history, so it is on GitHub). The slime files, `SlimeEnemy.h` and `SlimeEnemy.cpp`, are unchanged on `main`, so either version works for them. Two ways to see the right version:
+
+- **On GitHub (easiest, and it highlights the lines for you):** open the link in the table, which ends with the line range, then screenshot.
+  Base link: `https://github.com/MorganGravelat/AI-Native-Game-Guru/blob/aabbe52/` followed by the file path and `#L<first>-L<last>`.
+- **In VS Code:** run `git show aabbe52:Game/Source/GrantMoney/Public/EnemyBase.h` in a terminal opened in the repo root. This prints the file, but without line numbers. For line numbers, use the GitHub link or the VS Code Timeline panel, then open the entry for commit `aabbe52`.
+
+The `GrantMoneyPlayerCharacter` and `GrantMoneyGameMode` lines are from the current `main`. Other tickets have edited the game mode since, so if the lines look off by a few, look for the function name given in the table.
+
+| File | What to show | Where it is (path and lines) | Notes |
+|---|---|---|---|
+| `00-baseline-no-enemies.mp4` / `.png` | The world with no enemy: walk around for 10–15 s | In the Editor: level `Game/Content/Maps/PlayGame1.umap`. No file to open. | Retroactive. Do not place or keep any `SlimeEnemy` in the level, and **do not save the map**. |
+| `01-branch-created.png` | The branch exists and holds the work | Terminal in the repo root: `git log --oneline -3 GMS-127-128`. The local branch `GMS-127-128` still exists. | `git branch --show-current` now prints `main`, because the branch was merged, so use the `git log` command instead. A screenshot of the merged pull request page on GitHub also works. |
+| `02-ai-inspection-findings.png` | The AI's reply to the opening prompt | The Copilot chat panel. No file. Scroll to the first reply, the one listing "Files inspected". | |
+| `03-player-class-and-spawn.png` | The player class and how it is spawned | `Game/Source/GrantMoney/Public/GrantMoneyPlayerCharacter.h`, **lines 16–26** (the comment block and `class AGrantMoneyPlayerCharacter : public ACharacter`). Then `Game/Source/GrantMoney/Private/GrantMoneyGameMode.cpp`, **lines 73–92** (`SpawnDefaultPawnFor_Implementation`). | Two screenshots stitched side by side, or two separate images named `03a-` and `03b-`. |
+| `04-enemybase-header.png` | The properties and the two virtual functions | `Game/Source/GrantMoney/Public/EnemyBase.h` **at commit `aabbe52`, lines 16–54**. That range runs from `UCLASS()` through `MoveSpeed` (line 28), `StopDistance` (33), `SlowdownDistance` (38), `FindTarget` (45) and `GetMoveDirection` (54). GitHub link: `.../blob/aabbe52/Game/Source/GrantMoney/Public/EnemyBase.h#L16-L54` | Use the `aabbe52` version, not current `main`. |
+| `05-enemybase-details-panel.png` | The Details panel of a placed enemy, **Enemy → Movement** category | In the Unreal Editor: select the placed `SlimeEnemy` in the World Outliner (level `PlayGame1`), then look at the **Details** panel. In the panel, the category is called **Enemy**, with a sub-category **Movement** (it is declared in code as `Enemy` then `Movement`, joined by a vertical bar). | Not a file. Shows `MoveSpeed`, `StopDistance` and `SlowdownDistance`. On current `main` there is also an **Enemy → Combat** category, from SCRUM-33. Crop it out or mention it. |
+| `06-enemybase-compile-success.png` | Build output with `Result: Succeeded` | Terminal, any folder: `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" GrantMoneyEditor Win64 Development -Project="C:\Dev\AI-Native-Game-Guru\Game\GrantMoney.uproject" -WaitMutex -NoHotReload`. Screenshot the last lines. | Close the Editor first. Keep failures too. Retroactive: this builds today's `main`, not the original commit. Say so in the video. |
+| `07-slimeenemy-code.png` | `SlimeEnemy.cpp`, showing how little it contains | `Game/Source/GrantMoney/Private/SlimeEnemy.cpp`, **lines 18–39** (the whole constructor). Optional second shot: `Game/Source/GrantMoney/Public/SlimeEnemy.h`, **lines 16–29**, where line 17 is `class ASlimeEnemy : public AEnemyBase`. | Unchanged on `main`, so the current file is fine. |
+| `08-slime-compile-success.png` | Build output with `Result: Succeeded` | Same command as `06`. | Can be the same screenshot as `06`. Say so in the video. |
+| `09-slime-placed-in-level.png` | The slime in `PlayGame1` and its Details panel | In the Unreal Editor: level `Game/Content/Maps/PlayGame1.umap`. Select `SlimeEnemy` in the World Outliner. Show the viewport and the Details panel together. | Not a file. Do not save the map afterwards. |
+| `10-test-a-one-slime.mp4` | Test A: Play, the chase, the stop, `show collision` | In the Unreal Editor, Play in `PlayGame1`. Console command (the `` ` `` key): `show collision`. Open **Window → Output Log** and filter on `EnemyBase` to show the `is chasing` line. | Main result clip. |
+| `11-test-b-moving-player.mp4` | Test B: walk away, circle, reverse | Same: Play in `PlayGame1`. | |
+| `12-test-c-player-stops.mp4` | Test C: stop, wait, step away, stop again | Same. | |
+| `13-test-d-multiple-slimes.mp4` | Test D: four or five slimes at once | Same, with several `SlimeEnemy` actors placed in `PlayGame1`. | |
+| `14-test-e-no-valid-player.mp4` | Test E: no player, slimes idle | Same. Method: Simulate (Alt+S), or delete the player pawn in the Outliner while playing. | Say which method you used. |
+| `14b-test-e-no-target-warning-log.png` | The Output Log with one warning per slime | The Editor's **Window → Output Log**, filtered on `EnemyBase`. The line reads `EnemyBase: SlimeEnemy_… has no target yet; it will keep looking.` The same lines are saved in `Game/Saved/Logs/GrantMoney.log`. | One line per slime, not a stream. |
+| `15-test-f-stop-restart-pie.mp4` | Test F: three starts and stops | In the Unreal Editor: Play and Stop three times. | |
+| `16-slowdown-distance-details.png` | The Details panel with `SlowdownDistance` | In the Unreal Editor: select `SlimeEnemy`, Details panel, **Enemy → Movement** category. Code for reference: `EnemyBase.h` at `aabbe52`, **lines 35–38**. | Not a file. Default value is 50. |
+| `17-fast-slime-slowdown-50.mp4` | A fast slime (`MoveSpeed` about 800) trailing smoothly | In the Unreal Editor, during Play: eject (F8), select the slime in the Outliner, set `MoveSpeed` to 800 in Details. | Optional pair, for the before/after. |
+| `18-fast-slime-slowdown-0-stutter.mp4` | The same test with `SlowdownDistance` 0, showing stutter | Same, with `SlowdownDistance` set to 0. | Optional pair. Set it back to 50 afterwards. |
+| `19-no-aicontroller-in-outliner.png` | The World Outliner during Play with no `AIController` for the slime | In the Unreal Editor, during Play: the **World Outliner** panel, with the search box empty. The code that causes this: `Game/Source/GrantMoney/Private/EnemyBase.cpp` **at `aabbe52`, line 15** (`AutoPossessAI = EAutoPossessAI::Disabled;`). | Optional second shot: that one line. |
+| `20-pursuit-review-findings.png` | The AI's reply to the Step 6 review | The Copilot chat panel. No file. Scroll to the reply that starts with the "Defect 1" and "Defect 2" findings. | |
+| `21-decoupling-check.png` | A search of the enemy base finding nothing slime-specific | Search these two files for `slime`, `MapArrays`, `TileMap`: `Game/Source/GrantMoney/Public/EnemyBase.h` and `Game/Source/GrantMoney/Private/EnemyBase.cpp`. Use VS Code's search box (Ctrl+F) in each file, or run `Select-String -Path Game\Source\GrantMoney\Public\EnemyBase.h,Game\Source\GrantMoney\Private\EnemyBase.cpp -Pattern 'slime','MapArrays','TileMap'` in the repo root. | The shot should show "No results" or an empty output. Checked on current `main` as well, and it still finds nothing. |
+| `22-multi-slime-bumping.mp4` | Slimes bumping and wobbling | In the Unreal Editor, Play in `PlayGame1` with several slimes. Circle the player. | Optional, only if you see it. |
+| `23-git-status-final.png` | `git status` before committing | Terminal in the repo root: `git status`. | The work is already merged, so this is retroactive. A screenshot of the pull request's **Files changed** tab (five files) is a good substitute. Note that `Game/Content/Maps/PlayGame1.umap` currently shows as modified on `main`. |
+| `24-final-verification.png` | The Output Log with no enemy errors, beside the filled-in Result Summary | The Editor's **Window → Output Log** (filter on `EnemyBase` and on `Error`), beside the document `docs/course/Module3-CreatingChallengeAndReward/Sprint1/GMS-127-128-StartingDocument.md`, heading **"Result Summary (fill in only from what you observed)"** in Step 7. | Take it after Tests A to F, with real results typed in. |
 
 ### Suggested Recording Order
 
