@@ -10,6 +10,7 @@ class UAnimationAsset;
 class UInputAction;
 class UGrantMoneyCharacterVisualData;
 class UHealthComponent;
+class UPickupComponent;
 class UStarterWeaponComponent;
 class UStatsComponent;
 struct FInputActionValue;
@@ -21,7 +22,8 @@ struct FInputActionValue;
  * a jog animation based on ground speed. A UGrantMoneyCharacterVisualData asset
  * can override the mesh, animation and placement without recompiling. Health
  * comes from a UHealthComponent backed by a UStatsComponent. It starts every run
- * with a UStarterWeaponComponent that fires at nearby enemies by itself. The view comes from
+ * with a UStarterWeaponComponent that fires at nearby enemies by itself, and a UPickupComponent that
+ * draws in nearby pickups such as XP orbs. XP is the Experience stat. The view comes from
  * the map camera, not this class.
  */
 UCLASS()
@@ -38,7 +40,10 @@ public:
 	UStatsComponent* GetStats() const { return Stats; }
 	UHealthComponent* GetHealth() const { return Health; }
 	UStarterWeaponComponent* GetStarterWeapon() const { return StarterWeapon; }
+	UPickupComponent* GetPickups() const { return Pickups; }
 
+	// Running XP total (the Experience stat). Orbs add to it when they arrive.
+	float GetExperience() const;
 protected:
 	// Max health and future player stats. Buffs and upgrades add modifiers here.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
@@ -51,6 +56,10 @@ protected:
 	// The weapon the player starts with. Fires automatically; tune damage, interval, range and speed on it.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	TObjectPtr<UStarterWeaponComponent> StarterWeapon;
+
+	// Detects pickups within its radius and draws them in. Tune the radius on it.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
+	TObjectPtr<UPickupComponent> Pickups;
 
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;

@@ -13,6 +13,7 @@
 #include "HealthComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "StatsComponent.h"
+#include "XpOrbPickup.h"
 
 namespace
 {
@@ -78,6 +79,8 @@ AEnemyBase::AEnemyBase()
 	Stats->SetBaseStat(EGrantMoneyStat::AttackInterval, DefaultEnemyAttackInterval);
 	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	ContactDamage = CreateDefaultSubobject<UContactDamageComponent>(TEXT("ContactDamage"));
+
+	XpOrbClass = AXpOrbPickup::StaticClass();
 }
 
 void AEnemyBase::BeginPlay()
@@ -102,6 +105,9 @@ void AEnemyBase::HandleDeath(AActor* Killer)
 	SetActorEnableCollision(false);
 	GetCharacterMovement()->DisableMovement();
 
+	// Drop before the enemy is removed, at the spot it died.
+	SpawnPickupDrops();
+
 	// Report before destroying, so listeners can still read the enemy (location, stats, type).
 	if (UWorld* World = GetWorld())
 	{
@@ -118,6 +124,33 @@ void AEnemyBase::HandleDeath(AActor* Killer)
 	else
 	{
 		Destroy();
+	}
+}
+
+void AEnemyBase::SpawnPickupDrops()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FTransform SpawnTransform(FRotator::ZeroRotator, DeathTransform.GetLocation());
+
+	if (bDropsXpOrb && XpOrbClass)
+	{
+		World->SpawnActor<AXpOrbPickup>(XpOrbClass, SpawnTransform, SpawnParams);
+	}
+
+	// Each entry rolls on its own, so no bonus drop can take the place of the XP orb.
+	for (const FEnemyPickupDrop& Drop : BonusPickupDrops)
+	{
+		if (Drop.ShouldDrop(FMath::FRand()))
+		{
+			World->SpawnActor<APickupBase>(Drop.PickupClass, SpawnTransform, SpawnParams);
+		}
 	}
 }
 
