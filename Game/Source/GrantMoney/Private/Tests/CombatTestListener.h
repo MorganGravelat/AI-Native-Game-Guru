@@ -52,6 +52,10 @@ public:
 		LastKilledEnemy = Enemy;
 		LastKiller = Killer;
 		bKilledEnemyWasAliveWhenReported = IsValid(Enemy) && !Enemy->IsActorBeingDestroyed();
+		if (IsValid(Enemy))
+		{
+			LastKilledDeathTransform = Enemy->GetDeathTransform();
+		}
 	}
 
 	UFUNCTION()
@@ -76,6 +80,8 @@ public:
 	TWeakObjectPtr<AEnemyBase> LastKilledEnemy;
 	bool bKilledEnemyWasAliveWhenReported = false;
 	TWeakObjectPtr<AActor> LastKiller;
+	// The enemy's death transform as read inside the kill event.
+	FTransform LastKilledDeathTransform;
 
 	int32 StatChangedCount = 0;
 	float LastStatOldValue = 0.0f;

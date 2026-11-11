@@ -10,6 +10,7 @@ class UAnimationAsset;
 class UInputAction;
 class UGrantMoneyCharacterVisualData;
 class UHealthComponent;
+class UStarterWeaponComponent;
 class UStatsComponent;
 struct FInputActionValue;
 
@@ -19,7 +20,8 @@ struct FInputActionValue;
  * Looks like Epic's Manny (SKM_Manny_Simple) and switches between an idle and
  * a jog animation based on ground speed. A UGrantMoneyCharacterVisualData asset
  * can override the mesh, animation and placement without recompiling. Health
- * comes from a UHealthComponent backed by a UStatsComponent. The view comes from
+ * comes from a UHealthComponent backed by a UStatsComponent. It starts every run
+ * with a UStarterWeaponComponent that fires at nearby enemies by itself. The view comes from
  * the map camera, not this class.
  */
 UCLASS()
@@ -35,6 +37,7 @@ public:
 
 	UStatsComponent* GetStats() const { return Stats; }
 	UHealthComponent* GetHealth() const { return Health; }
+	UStarterWeaponComponent* GetStarterWeapon() const { return StarterWeapon; }
 
 protected:
 	// Max health and future player stats. Buffs and upgrades add modifiers here.
@@ -44,6 +47,10 @@ protected:
 	// Current health; reads MaxHealth from Stats.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
 	TObjectPtr<UHealthComponent> Health;
+
+	// The weapon the player starts with. Fires automatically; tune damage, interval, range and speed on it.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+	TObjectPtr<UStarterWeaponComponent> StarterWeapon;
 
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;

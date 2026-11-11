@@ -135,4 +135,32 @@ bool FEnemyBaseDelayedCleanupTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemyBaseDeathTransformTest,
+    "GrantMoney.Combat.EnemyBase.DeathTransform",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyBaseDeathTransformTest::RunTest(const FString& Parameters)
+{
+    EnemyTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    AEnemyBase* Enemy = Scene.Enemy;
+    TestTrue(TEXT("Identity before death"), Enemy->GetDeathTransform().Equals(FTransform::Identity));
+
+    // Move it first, so the recorded spot is where it died and not where it spawned.
+    const FTransform DeathSpot(FRotator(0.0, 45.0, 0.0), FVector(300.0, -200.0, 50.0));
+    Enemy->SetActorTransform(DeathSpot);
+
+    Enemy->GetHealth()->ApplyDamage(1000.0f);
+    TestEqual(TEXT("Kill reported"), Scene.Listener->EnemyKilledCount, 1);
+    TestTrue(TEXT("The enemy was destroyed"), Enemy->IsActorBeingDestroyed());
+    TestTrue(TEXT("Readable inside the kill event, before the enemy is removed"), Scene.Listener->LastKilledDeathTransform.Equals(DeathSpot, 0.01f));
+    TestTrue(TEXT("Still the death spot after removal"), Enemy->GetDeathTransform().Equals(DeathSpot, 0.01f));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
