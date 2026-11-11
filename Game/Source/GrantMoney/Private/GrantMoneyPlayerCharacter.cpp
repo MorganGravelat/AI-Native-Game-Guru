@@ -17,6 +17,7 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Math/RotationMatrix.h"
+#include "PickupComponent.h"
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -47,6 +48,10 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 
 	// The player starts every run armed. The weapon starts firing when play begins.
 	StarterWeapon = CreateDefaultSubobject<UStarterWeaponComponent>(TEXT("StarterWeapon"));
+
+	// XP starts at zero every run and only grows. Orbs add to it through the stat's base value.
+	Stats->SetBaseStat(EGrantMoneyStat::Experience, 0.0f);
+	Pickups = CreateDefaultSubobject<UPickupComponent>(TEXT("Pickups"));
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionFinder(TEXT("/Game/Input/IA_CameraMove.IA_CameraMove"));
 
@@ -119,6 +124,11 @@ void AGrantMoneyPlayerCharacter::BeginPlay()
 
 	// Only the built-in idle/jog logic needs the tick.
 	SetActorTickEnabled(bUseBuiltInLocomotion);
+}
+
+float AGrantMoneyPlayerCharacter::GetExperience() const
+{
+	return Stats ? Stats->GetStat(EGrantMoneyStat::Experience) : 0.0f;
 }
 
 void AGrantMoneyPlayerCharacter::Tick(float DeltaSeconds)

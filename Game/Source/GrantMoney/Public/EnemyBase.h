@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EnemyPickupDrop.h"
 #include "GameFramework/Character.h"
 #include "EnemyBase.generated.h"
 
+class AXpOrbPickup;
 class UContactDamageComponent;
 class UHealthComponent;
 class UStatsComponent;
@@ -18,7 +20,7 @@ class UStatsComponent;
  *
  * Enemies have health (max health = the MaxHealth stat) and take damage from
  * UGameplayStatics::ApplyDamage. On death the enemy stops, reports itself to
- * UCombatEventsSubsystem::OnEnemyKilled, then is destroyed after DeathCleanupDelay.
+ * UCombatEventsSubsystem::OnEnemyKilled, drops its pickups, then is destroyed after DeathCleanupDelay.
  * Override HandleDeath for per-type death effects.
  * Derive from this class and change the properties; override FindTarget or
  * GetMoveDirection to change who is chased or how.
@@ -60,6 +62,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Combat", meta = (ClampMin = "0.0", Units = "s"))
 	float DeathCleanupDelay = 0.0f;
 
+	// When true, one XpOrbClass orb is dropped at the death location, every time. Off by default;
+	// enemy types turn it on in their constructor (slimes do).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Drops")
+	bool bDropsXpOrb = false;
+
+	// The guaranteed orb. Its XpValue says how much XP it gives. Defaults to AXpOrbPickup.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Drops")
+	TSubclassOf<AXpOrbPickup> XpOrbClass;
+
+	// Extra pickups with their own drop chances (for example a rare power-up). Each entry is rolled
+	// on its own and never affects the guaranteed XP orb above.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Drops")
+	TArray<FEnemyPickupDrop> BonusPickupDrops;
 	UStatsComponent* GetStats() const { return Stats; }
 	UHealthComponent* GetHealth() const { return Health; }
 	UContactDamageComponent* GetContactDamage() const { return ContactDamage; }
@@ -67,9 +82,13 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	// Runs once when health reaches zero. Stops the enemy, reports the kill, and schedules destruction.
+	// Runs once when health reaches zero. Stops the enemy, drops its pickups, reports the kill, and schedules destruction.
 	// Override to add per-type death effects; call Super to keep the cleanup and the kill event.
 	virtual void HandleDeath(AActor* Killer);
+
+	// Spawns the guaranteed XP orb (if bDropsXpOrb) and each bonus drop that passes its chance roll,
+	// all at the death location. Called once from HandleDeath, which health runs only once per enemy.
+	virtual void SpawnPickupDrops();
 
 	// Current health. Max health is the MaxHealth stat.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Combat")

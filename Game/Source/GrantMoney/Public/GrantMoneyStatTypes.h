@@ -25,6 +25,9 @@ enum class EGrantMoneyStat : uint8
 
 	// Extra targets one attack can pass through: 0 = stops at the first target, 2 = hits up to 3. Rounded down.
 	Penetration UMETA(DisplayName = "Penetration"),
+
+	// Running XP total, kept as the stat's base value. Pickups add to it; leveling will read it later.
+	Experience UMETA(DisplayName = "Experience"),
 };
 
 /**

@@ -21,6 +21,8 @@ ASlimeEnemy::ASlimeEnemy()
 	MoveSpeed = 250.0f;
 	StopDistance = 80.0f;
 
+	// Every slime leaves an XP orb behind.
+	bDropsXpOrb = true;
 	// A round body: the capsule is as tall as it is wide.
 	GetCapsuleComponent()->InitCapsuleSize(SlimeCapsuleRadius, SlimeCapsuleRadius);
 
