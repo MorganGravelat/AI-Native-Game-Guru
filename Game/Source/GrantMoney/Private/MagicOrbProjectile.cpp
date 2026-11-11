@@ -71,7 +71,7 @@ AMagicOrbProjectile::AMagicOrbProjectile()
 	AttackHit->OnHitsExhausted.AddDynamic(this, &AMagicOrbProjectile::HandleHitsExhausted);
 }
 
-void AMagicOrbProjectile::Launch(const FVector& Direction, float Speed, float Damage, float Lifetime)
+void AMagicOrbProjectile::Launch(const FVector& Direction, float Speed, float Damage, float Lifetime, int32 Penetration)
 {
 	const FVector Heading = Direction.GetSafeNormal();
 
@@ -79,6 +79,7 @@ void AMagicOrbProjectile::Launch(const FVector& Direction, float Speed, float Da
 	Movement->InitialSpeed = Speed;
 	Movement->MaxSpeed = Speed;
 	AttackHit->FallbackDamage = Damage;
+	AttackHit->FallbackPenetration = FMath::Max(0, Penetration);
 	LifetimeSeconds = FMath::Max(Lifetime, MinLifetimeSeconds);
 
 	if (!Heading.IsNearlyZero())

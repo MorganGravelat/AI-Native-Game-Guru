@@ -13,7 +13,7 @@ class UStaticMeshComponent;
 
 /**
  * A magic orb: a small sphere that flies in a straight line, damages the first living
- * target it touches, then disappears. It never homes, bounces or falls. It also
+ * target it touches (plus one more per point of penetration), then disappears. It never homes, bounces or falls. It also
  * disappears when its lifetime runs out, so a missed orb does not fly forever.
  *
  * Hit rules and damage come from UAttackHitComponent (one hit per target, never the
@@ -31,9 +31,11 @@ class GRANTMONEY_API AMagicOrbProjectile : public AActor
 public:
 	AMagicOrbProjectile();
 
-	// Sets direction, speed, damage per hit and lifetime. Call between SpawnActorDeferred and
-	// FinishSpawning, before the orb begins play. Direction does not need to be normalised.
-	void Launch(const FVector& Direction, float Speed, float Damage, float LifetimeSeconds);
+	// Sets direction, speed, damage per hit, lifetime and penetration. Call between SpawnActorDeferred
+	// and FinishSpawning, before the orb begins play. Direction does not need to be normalised.
+	// Penetration is how many extra enemies the orb may pass through: 0 = used up by its first hit,
+	// 2 = hits up to 3 enemies. Negative values count as 0.
+	void Launch(const FVector& Direction, float Speed, float Damage, float LifetimeSeconds, int32 Penetration = 0);
 
 	UAttackHitComponent* GetAttackHit() const { return AttackHit; }
 
@@ -53,7 +55,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Orb")
 	TObjectPtr<UProjectileMovementComponent> Movement;
 
-	// Once-per-target hit rule and damage. Penetration stays 0, so the orb is used up by its first hit.
+	// Once-per-target hit rule, damage and penetration (both set by Launch from the weapon).
+	// With penetration 0 (the default) the orb is used up by its first hit.
 	UPROPERTY(VisibleAnywhere, Category = "Orb")
 	TObjectPtr<UAttackHitComponent> AttackHit;
 

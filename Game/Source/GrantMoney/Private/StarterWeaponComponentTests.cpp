@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "GrantMoneyPlayerCharacter.h"
+#include "StatsComponent.h"
 #include "Tests/WeaponTestScene.h"
 
 // Targeting and firing tests. Slimes are frozen in place, so these exercise the weapon's
@@ -265,6 +266,102 @@ bool FStarterWeaponUsesItsSettingsTest::RunTest(const FString& Parameters)
     const FVector ToSlimeCenter = (Slime->GetActorLocation() - Scene.Shooter->GetActorLocation()).GetSafeNormal();
     TestTrue(TEXT("Aimed at the slime's collision center"), WeaponTest::VelocityOf(Orb).GetSafeNormal().Equals(ToSlimeCenter, 0.001));
     TestTrue(TEXT("The orb belongs to the shooter"), Orb->GetInstigator() == Scene.Shooter && Orb->GetOwner() == Scene.Shooter);
+    return true;
+}
+
+namespace StarterWeaponStatTest
+{
+    // Long enough that the weapon's own timer never fires during these tests.
+    constexpr float NoTimerShots = 1000.0f;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStarterWeaponReadsOwnerStatsTest,
+    "GrantMoney.Weapons.StarterWeapon.OwnerStatBoostsApply",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStarterWeaponReadsOwnerStatsTest::RunTest(const FString& Parameters)
+{
+    WeaponTest::FScene Scene;
+    if (!Scene.Create(*this, StarterWeaponStatTest::NoTimerShots))
+    {
+        return false;
+    }
+
+    UStarterWeaponComponent* Weapon = Scene.Weapon;
+    Weapon->Damage = 10.0f;
+    Weapon->FireInterval = 1.0f;
+    Weapon->Penetration = 0;
+
+    TestEqual(TEXT("No stats: damage is the weapon's"), Weapon->GetEffectiveDamage(), 10.0f);
+    TestEqual(TEXT("No stats: interval is the weapon's"), Weapon->GetEffectiveFireInterval(), 1.0f);
+    TestEqual(TEXT("No stats: penetration is the weapon's"), Weapon->GetEffectivePenetration(), 0);
+
+    // Permanent boosts are modifiers on the owner's stats, with no base values (as on the player).
+    UStatsComponent* Stats = NewObject<UStatsComponent>(Scene.Shooter);
+    Stats->RegisterComponent();
+    Stats->AddModifier(EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Additive, 2.0f);
+    Stats->AddModifier(EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.25f);
+    Stats->AddModifier(EGrantMoneyStat::Penetration, EGrantMoneyStatModifierOp::Additive, 1.0f);
+    Stats->AddModifier(EGrantMoneyStat::Penetration, EGrantMoneyStatModifierOp::Additive, 1.0f);
+
+    TestEqual(TEXT("Damage 10 + 2"), Weapon->GetEffectiveDamage(), 12.0f);
+    TestEqual(TEXT("Interval 1 s - 25%"), Weapon->GetEffectiveFireInterval(), 0.75f);
+    TestEqual(TEXT("Penetration 0 + 2"), Weapon->GetEffectivePenetration(), 2);
+
+    ASlimeEnemy* Slime = Scene.SpawnSlime(FVector(400.0, 0.0, 0.0));
+    AMagicOrbProjectile* Orb = Weapon->FireAt(Slime);
+    if (TestNotNull(TEXT("An orb is fired"), Orb))
+    {
+        TestEqual(TEXT("The orb carries the boosted damage"), Orb->GetAttackHit()->GetDamage(), 12.0f);
+        TestEqual(TEXT("The orb carries the boosted penetration"), Orb->GetAttackHit()->GetPenetration(), 2);
+    }
+
+    // Many attack speed boosts can never make the weapon fire every frame.
+    for (int32 Index = 0; Index < 30; ++Index)
+    {
+        Stats->AddModifier(EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.05f);
+    }
+    TestEqual(TEXT("Interval never drops below 0.05 s"), Weapon->GetEffectiveFireInterval(), 0.05f);
+
+    // A base value on the owner's stats replaces the weapon's own value, as for the other combat components.
+    Stats->SetBaseStat(EGrantMoneyStat::Damage, 20.0f);
+    TestEqual(TEXT("Owner's base 20 + 2"), Weapon->GetEffectiveDamage(), 22.0f);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStarterWeaponPenetrationHitsUpToThreeTest,
+    "GrantMoney.Weapons.StarterWeapon.PenetrationTwoHitsThreeSlimes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStarterWeaponPenetrationHitsUpToThreeTest::RunTest(const FString& Parameters)
+{
+    WeaponTest::FScene Scene;
+    if (!Scene.Create(*this, StarterWeaponStatTest::NoTimerShots))
+    {
+        return false;
+    }
+
+    UStatsComponent* Stats = NewObject<UStatsComponent>(Scene.Shooter);
+    Stats->RegisterComponent();
+    Stats->AddModifier(EGrantMoneyStat::Penetration, EGrantMoneyStatModifierOp::Additive, 2.0f);
+
+    // Four slimes in a row along the orb's path. Each survives one 10-damage hit (slimes have 30 health).
+    ASlimeEnemy* Slimes[4];
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(Slimes); ++Index)
+    {
+        Slimes[Index] = Scene.SpawnSlime(FVector(200.0 + 100.0 * Index, 0.0, 0.0));
+    }
+
+    TestNotNull(TEXT("An orb is fired"), Scene.Weapon->FireAt(Slimes[0]));
+    Scene.Step(1.0f);
+
+    TestEqual(TEXT("1st slime hit"), WeaponTest::HealthOf(Slimes[0]), 20.0f);
+    TestEqual(TEXT("2nd slime hit"), WeaponTest::HealthOf(Slimes[1]), 20.0f);
+    TestEqual(TEXT("3rd slime hit"), WeaponTest::HealthOf(Slimes[2]), 20.0f);
+    TestEqual(TEXT("4th slime untouched: penetration 2 means up to 3 enemies"), WeaponTest::HealthOf(Slimes[3]), 30.0f);
+    TestEqual(TEXT("The orb is used up"), Scene.CountOrbs(), 0);
     return true;
 }
 

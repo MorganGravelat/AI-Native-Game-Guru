@@ -28,6 +28,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stats")
 	float GetStat(EGrantMoneyStat Stat) const;
 
+	// Same formula as GetStat, but with BaseValue in place of the stat's own base value.
+	// Lets a component that owns the base number (e.g. the weapon's Damage) still pick up
+	// this actor's modifiers, such as permanent stat boosts.
+	UFUNCTION(BlueprintPure, Category = "Stats")
+	float GetStatFromBase(EGrantMoneyStat Stat, float BaseValue) const;
+
 	// Value before modifiers. A stat with no base value is 0.
 	UFUNCTION(BlueprintPure, Category = "Stats")
 	float GetBaseStat(EGrantMoneyStat Stat) const;

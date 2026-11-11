@@ -15,6 +15,11 @@ float UStatsComponent::GetBaseStat(EGrantMoneyStat Stat) const
 
 float UStatsComponent::GetStat(EGrantMoneyStat Stat) const
 {
+	return GetStatFromBase(Stat, GetBaseStat(Stat));
+}
+
+float UStatsComponent::GetStatFromBase(EGrantMoneyStat Stat, float BaseValue) const
+{
 	float Additive = 0.0f;
 	float Multiplicative = 0.0f;
 
@@ -35,7 +40,7 @@ float UStatsComponent::GetStat(EGrantMoneyStat Stat) const
 		}
 	}
 
-	return FMath::Max(0.0f, (GetBaseStat(Stat) + Additive) * (1.0f + Multiplicative));
+	return FMath::Max(0.0f, (BaseValue + Additive) * (1.0f + Multiplicative));
 }
 
 void UStatsComponent::SetBaseStat(EGrantMoneyStat Stat, float Value)

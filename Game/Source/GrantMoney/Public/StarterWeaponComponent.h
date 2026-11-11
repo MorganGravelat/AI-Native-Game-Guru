@@ -21,6 +21,12 @@ class AMagicOrbProjectile;
  * The orb is aimed at the target's collision center at the moment of firing, then flies in a
  * straight line. All tuning values below are read when a shot is fired, so they can be changed
  * while playing.
+ *
+ * Damage, FireInterval and Penetration are the weapon's base values. If the owner has a
+ * UStatsComponent, its Damage, AttackInterval and Penetration modifiers (for example permanent
+ * stat boost pickups) are applied on top of them; see the GetEffective* functions. If the owner's
+ * stats hold a base value for one of those stats, that base replaces the weapon's own value,
+ * the same rule UAttackHitComponent and UContactDamageComponent use.
  */
 UCLASS(ClassGroup = (Combat), meta = (BlueprintSpawnableComponent))
 class GRANTMONEY_API UStarterWeaponComponent : public UActorComponent
@@ -43,6 +49,19 @@ public:
 	// Returns true if an orb was fired.
 	bool TryFire();
 
+	// Damage per orb after the owner's Damage stat modifiers.
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	float GetEffectiveDamage() const;
+
+	// Seconds between shots after the owner's AttackInterval stat modifiers. Never below 0.05 s.
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	float GetEffectiveFireInterval() const;
+
+	// Extra enemies each orb passes through after the owner's Penetration stat modifiers, rounded down.
+	// 0 = an orb stops at the first enemy, 2 = it can hit up to 3. Never negative.
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	int32 GetEffectivePenetration() const;
+
 	// Damage per orb, applied through the existing health system.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0"))
 	float Damage = 10.0f;
@@ -50,6 +69,10 @@ public:
 	// Seconds between shots (and between target checks when nothing is in range).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.05", Units = "s"))
 	float FireInterval = 1.0f;
+
+	// Extra enemies each orb can pass through before it is used up. 0 = only the first enemy is hit.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0"))
+	int32 Penetration = 0;
 
 	// Largest ground-plane distance, owner center to enemy center, at which an enemy can be targeted.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0", Units = "cm"))
@@ -74,7 +97,7 @@ protected:
 private:
 	void HandleFireTimer();
 
-	// Starts the countdown to the next shot, using the current FireInterval.
+	// Starts the countdown to the next shot, using the current effective fire interval.
 	void ScheduleNextShot();
 
 	FTimerHandle FireTimerHandle;

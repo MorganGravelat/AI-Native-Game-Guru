@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "EnemyPickupDrop.h"
+#include "StatBoostPickup.h"
 #include "Tests/PickupTestScene.h"
 
 // Enemy drops: the guaranteed XP orb and independent bonus pickups, spawned from the existing death flow.
@@ -39,6 +40,9 @@ bool FEnemyDropSlimeDropsOneOrbTest::RunTest(const FString& Parameters)
 
     const FVector DeathSpot(1500.0, 400.0, 0.0);
     ASlimeEnemy* Slime = Scene.SpawnSlime(DeathSpot);
+
+    // Rare stat boosts are random; this test is about the guaranteed orb only.
+    Slime->BonusPickupDrops.Reset();
     TestEqual(TEXT("Nothing is dropped while the slime lives"), Scene.CountPickups(), 0);
 
     TestTrue(TEXT("The slime dies"), Kill(Slime));
@@ -196,6 +200,43 @@ bool FEnemyDropShouldDropTest::RunTest(const FString& Parameters)
     Drop.PickupClass = nullptr;
     Drop.DropChance = 1.0f;
     TestFalse(TEXT("No class never drops"), Drop.ShouldDrop(0.0f));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemyDropSlimeStatBoostsTest,
+    "GrantMoney.Pickups.EnemyDrops.SlimeDropsRareStatBoosts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyDropSlimeStatBoostsTest::RunTest(const FString& Parameters)
+{
+    // Code defaults: one rare entry per boost the player can use.
+    const TArray<FEnemyPickupDrop>& Defaults = GetDefault<ASlimeEnemy>()->BonusPickupDrops;
+    TestEqual(TEXT("Four stat boost entries"), Defaults.Num(), 4);
+    for (const FEnemyPickupDrop& Drop : Defaults)
+    {
+        TestTrue(TEXT("Each entry is a stat boost"), Drop.PickupClass && Drop.PickupClass->IsChildOf(AStatBoostPickup::StaticClass()));
+        TestEqual(TEXT("Each uses the default chance"), Drop.DropChance, ASlimeEnemy::DefaultStatBoostDropChance);
+    }
+    TestTrue(TEXT("The default chance is rare (5% or less)"), ASlimeEnemy::DefaultStatBoostDropChance > 0.0f && ASlimeEnemy::DefaultStatBoostDropChance <= 0.05f);
+
+    // The chance is editable per entry: at 100% every boost drops, beside the guaranteed XP orb.
+    PickupTest::FScene Scene;
+    if (!CreateIdleScene(Scene, *this))
+    {
+        return false;
+    }
+
+    ASlimeEnemy* Slime = Scene.SpawnSlime(FVector(1500.0, 0.0, 0.0));
+    for (FEnemyPickupDrop& Drop : Slime->BonusPickupDrops)
+    {
+        Drop.DropChance = 1.0f;
+    }
+
+    Kill(Slime);
+    Scene.Step(0.2f);
+    TestEqual(TEXT("All four boosts dropped"), Scene.CountPickups<AStatBoostPickup>(), 4);
+    TestEqual(TEXT("Plus the XP orb"), Scene.CountPickups<AXpOrbPickup>(), 1);
     return true;
 }
 
