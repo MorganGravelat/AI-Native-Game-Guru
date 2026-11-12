@@ -396,7 +396,7 @@ bool FStarterWeaponPenetrationHitsUpToThreeTest::RunTest(const FString& Paramete
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FStarterWeaponProjectileCountTest,
-    "GrantMoney.Weapons.StarterWeapon.ProjectileCountFiresAtDistinctTargets",
+    "GrantMoney.Weapons.StarterWeapon.ProjectileCountFiresStaggeredAtOneTarget",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FStarterWeaponProjectileCountTest::RunTest(const FString& Parameters)
@@ -410,45 +410,35 @@ bool FStarterWeaponProjectileCountTest::RunTest(const FString& Parameters)
     UStatsComponent* Stats = NewObject<UStatsComponent>(Scene.Shooter);
     Stats->RegisterComponent();
 
-    // Spread around the shooter rather than placed in a line, so each orb's straight-line path
-    // reaches its own target instead of being blocked by a nearer one standing in front of it.
-    ASlimeEnemy* Near = Scene.SpawnSlime(FVector(200.0, 0.0, 0.0));
-    ASlimeEnemy* Middle = Scene.SpawnSlime(FVector(0.0, 400.0, 0.0));
-    ASlimeEnemy* Far = Scene.SpawnSlime(FVector(-400.0, -400.0, 0.0));
-    TestEqual(TEXT("Default projectile count is 1"), Scene.Weapon->GetEffectiveProjectileCount(), 1);
-    TestTrue(TEXT("TryFire fires once"), Scene.Weapon->TryFire());
-    TestEqual(TEXT("Exactly one orb"), Scene.CountOrbs(), 1);
-    Scene.Step(2.0f);
-    TestEqual(TEXT("Only the nearest slime was hit"), WeaponTest::HealthOf(Near), 20.0f);
-    TestEqual(TEXT("The middle slime is untouched"), WeaponTest::HealthOf(Middle), 30.0f);
-    TestEqual(TEXT("The far slime is untouched"), WeaponTest::HealthOf(Far), 30.0f);
+    // Far enough that none of the staggered orbs reach it before the spawn-timing checks below, but
+    // still within the weapon's default 800 cm TargetRange.
+    ASlimeEnemy* Near = Scene.SpawnSlime(FVector(700.0, 0.0, 0.0));
+    // Farther still, and never meant to be hit at all: a Projectile Count upgrade must never split a
+    // burst across more than one enemy.
+    ASlimeEnemy* Decoy = Scene.SpawnSlime(FVector(0.0, 750.0, 0.0));
 
-    // Two Projectile Count upgrades: three orbs, one at each of the three nearest distinct slimes.
     Stats->AddModifier(EGrantMoneyStat::ProjectileCount, EGrantMoneyStatModifierOp::Additive, 2.0f);
     TestEqual(TEXT("Effective projectile count is 3"), Scene.Weapon->GetEffectiveProjectileCount(), 3);
+
     TestTrue(TEXT("TryFire fires"), Scene.Weapon->TryFire());
-    TestEqual(TEXT("Three orbs fired (the first shot's orb already hit and was destroyed)"), Scene.CountOrbs(), 3);
+    TestEqual(TEXT("Only the first orb fires immediately"), Scene.CountOrbs(), 1);
+
+    const float Beat = Scene.Weapon->ProjectileStaggerSeconds;
+    Scene.Step(Beat * 1.5f);
+    TestEqual(TEXT("The second orb follows one stagger beat later"), Scene.CountOrbs(), 2);
+
+    Scene.Step(Beat * 1.5f);
+    TestEqual(TEXT("The third orb follows another stagger beat later"), Scene.CountOrbs(), 3);
+
+    // No fourth shot: the burst is exactly ShotCount orbs, not open-ended.
+    Scene.Step(Beat * 1.5f);
+    TestEqual(TEXT("The burst stops at exactly three orbs"), Scene.CountOrbs(), 3);
+
     Scene.Step(2.0f);
-    TestEqual(TEXT("Near hit again"), WeaponTest::HealthOf(Near), 10.0f);
-    TestEqual(TEXT("Middle now hit"), WeaponTest::HealthOf(Middle), 20.0f);
-    TestEqual(TEXT("Far now hit"), WeaponTest::HealthOf(Far), 20.0f);
+    TestEqual(TEXT("All three orbs hit the single nearest target"), WeaponTest::HealthOf(Near), 0.0f);
+    TestEqual(TEXT("The decoy, never targeted, is untouched"), WeaponTest::HealthOf(Decoy), 30.0f);
 
-    // Fewer enemies in range than orbs: the extra orbs re-target the enemies that exist, not skipped.
-    WeaponTest::FScene Lonely;
-    if (!Lonely.Create(*this, StarterWeaponStatTest::NoTimerShots))
-    {
-        return false;
-    }
-    UStatsComponent* LonelyStats = NewObject<UStatsComponent>(Lonely.Shooter);
-    LonelyStats->RegisterComponent();
-    LonelyStats->AddModifier(EGrantMoneyStat::ProjectileCount, EGrantMoneyStatModifierOp::Additive, 2.0f);
-    ASlimeEnemy* OnlySlime = Lonely.SpawnSlime(FVector(200.0, 0.0, 0.0));
-    TestTrue(TEXT("Fires with only one enemy in range"), Lonely.Weapon->TryFire());
-    TestEqual(TEXT("Three orbs still fired"), Lonely.CountOrbs(), 3);
-    Lonely.Step(2.0f);
-    TestEqual(TEXT("All three hit the one slime available"), WeaponTest::HealthOf(OnlySlime), 0.0f);
-
-    // No enemies at all: the whole cycle is skipped, same as today with one orb.
+    // No enemies at all: the whole cycle (first shot and any stagger) is skipped.
     WeaponTest::FScene Empty;
     if (!Empty.Create(*this, StarterWeaponStatTest::NoTimerShots))
     {

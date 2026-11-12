@@ -19,6 +19,15 @@ class UStatsComponent;
  * UContactDamageComponent (damage = the ContactDamage stat). There is no pathfinding,
  * and no AI controller is needed.
  *
+ * Pursuit is handled entirely by the standard ACharacter/UCharacterMovementComponent: AddMovementInput
+ * toward the target each tick, with the movement component's own built-in step-up and slope-walking
+ * doing the actual terrain traversal (SCRUM-29). MaxStepHeight and MaxWalkableFloorAngle below configure
+ * how far that traversal reaches — tall enough to climb ordinary obstacles and stack on top of other
+ * enemies crowding the direct path, but kept well short of the map boundary wall's height so an enemy can
+ * never step its way out of the playable area. When an obstruction is too tall or too steep to climb, the
+ * movement component slides along it instead (also built in), so a shorter path around a blockage is
+ * taken automatically without any extra code here.
+ *
  * Enemies have health (max health = the MaxHealth stat) and take damage from
  * UGameplayStatics::ApplyDamage. On death the enemy stops, reports itself to
  * UCombatEventsSubsystem::OnEnemyKilled, drops its pickups, then is destroyed after DeathCleanupDelay.
@@ -52,6 +61,24 @@ public:
 	// Prevents stop-and-go stutter when the target moves away slowly. 0 turns this off.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Movement", meta = (ClampMin = "0.0", Units = "cm"))
 	float SlowdownDistance = 50.0f;
+
+	// Tallest single obstruction (a kerb, a low prop, or another enemy's capsule) this enemy can step up
+	// and stand on top of directly while pursuing, the same way stairs work for a player character —
+	// applied to GetCharacterMovement()->MaxStepHeight (SCRUM-29). Default clears one slime's own capsule
+	// height (60 cm, see ASlimeEnemy) with room to spare, so enemies climb over ordinary low obstacles and
+	// stack on top of each other when a crowd blocks the direct path, the same way they would climb any
+	// one of those stacked enemies in turn. Kept well below the map boundary wall's height
+	// (ATileMapRenderer::WallHeight, 300 cm by default) so this can never be climbed into an escape —
+	// keep this comfortably under that value if either is changed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Traversal", meta = (ClampMin = "0.0", Units = "cm"))
+	float MaxStepHeight = 90.0f;
+
+	// Steepest surface this enemy can stand and walk on without sliding back down — applied to
+	// GetCharacterMovement()->WalkableFloorAngle (SCRUM-29). Raised a little above the engine's own
+	// default so an enemy stays put when slightly off-centre on the rounded top of a capsule it has just
+	// stepped onto, instead of sliding straight back off, while staying far short of a near-vertical wall.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Traversal", meta = (ClampMin = "0.0", ClampMax = "89.0", Units = "deg"))
+	float MaxWalkableFloorAngle = 58.0f;
 
 	// The current target, or null if none has been found yet.
 	AActor* GetTarget() const { return Target; }

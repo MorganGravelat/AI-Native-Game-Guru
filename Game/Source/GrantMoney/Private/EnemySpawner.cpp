@@ -154,7 +154,16 @@ float AEnemySpawner::GetDifficultyAlpha() const
 {
 	const float RampSeconds = FMath::Max(0.01f, DifficultyRampSeconds);
 	const float Linear = FMath::Clamp(static_cast<float>(GetEffectiveElapsedSeconds()) / RampSeconds, 0.0f, 1.0f);
-	return DifficultyCurve ? FMath::Clamp(DifficultyCurve->GetFloatValue(Linear), 0.0f, 1.0f) : Linear;
+
+	if (DifficultyCurve)
+	{
+		return FMath::Clamp(DifficultyCurve->GetFloatValue(Linear), 0.0f, 1.0f);
+	}
+
+	// No curve asset: ease the ramp by a plain exponent instead (SCRUM-37), so the default out-of-the-box
+	// feel already begins gently and saves the busiest pressure for the end, without requiring a
+	// UCurveFloat asset (which cannot be authored from code).
+	return FMath::Pow(Linear, FMath::Max(0.01f, DifficultyCurveExponent));
 }
 
 float AEnemySpawner::GetCurrentSpawnInterval() const

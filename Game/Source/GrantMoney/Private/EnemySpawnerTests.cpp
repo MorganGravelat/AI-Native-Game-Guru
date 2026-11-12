@@ -181,6 +181,10 @@ bool FEnemySpawnerDifficultyRampTest::RunTest(const FString& Parameters)
     Spawner->DifficultyRampSeconds = 100.0f;
     Spawner->bRequireActiveRun = false;
 
+    // This test checks the ramp's raw Lerp math, so it pins the exponent to a straight line (the
+    // SCRUM-37 default eases the ramp instead — see FEnemySpawnerDifficultyEasesByDefaultTest).
+    Spawner->DifficultyCurveExponent = 1.0f;
+
     // With no run controller and no override, survival time is 0: the slow, small, low-cap start.
     TestEqual(TEXT("No run, no override: difficulty is 0"), Spawner->GetDifficultyAlpha(), 0.0f);
     TestEqual(TEXT("Slow interval at the start"), Spawner->GetCurrentSpawnInterval(), 4.0f);
@@ -225,6 +229,42 @@ bool FEnemySpawnerDifficultyRampTest::RunTest(const FString& Parameters)
     Run->StartRun();
     Run->AdvanceRun(50.0f);
     TestEqual(TEXT("Difficulty follows the run controller's elapsed time"), Spawner->GetDifficultyAlpha(), 0.5f, 0.001f);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemySpawnerDifficultyEasesByDefaultTest,
+    "GrantMoney.Run.EnemySpawner.DifficultyEasesInByDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemySpawnerDifficultyEasesByDefaultTest::RunTest(const FString& Parameters)
+{
+    // SCRUM-37: with no DifficultyCurve asset, the default exponent must noticeably ease the ramp in,
+    // not rise in a straight line, so a run begins gently and saves its busiest pressure for the end.
+    SpawnerTest::FScene Scene;
+    if (!Scene.Create(*this, SpawnerTest::MapMin, SpawnerTest::MapMax, SpawnerTest::MapCentre))
+    {
+        return false;
+    }
+
+    AEnemySpawner* Spawner = Scene.Spawner;
+    Spawner->bRequireActiveRun = false;
+    Spawner->DifficultyRampSeconds = 100.0f;
+    TestTrue(TEXT("Eased by default (exponent above 1)"), Spawner->DifficultyCurveExponent > 1.0f);
+
+    Spawner->SetElapsedSecondsOverride(25.0f); // a quarter of the way through the ramp
+    TestTrue(TEXT("Noticeably gentler than linear a quarter of the way in"), Spawner->GetDifficultyAlpha() < 0.25f);
+
+    Spawner->SetElapsedSecondsOverride(50.0f); // halfway through the ramp
+    TestTrue(TEXT("Still gentler than linear at the halfway point"), Spawner->GetDifficultyAlpha() < 0.5f);
+
+    Spawner->SetElapsedSecondsOverride(100.0f); // the full ramp
+    TestEqual(TEXT("Still reaches exactly 1 at the end, whatever the exponent"), Spawner->GetDifficultyAlpha(), 1.0f);
+
+    // An exponent of 1 is a plain straight line (the pre-SCRUM-37 behaviour), still available if wanted.
+    Spawner->DifficultyCurveExponent = 1.0f;
+    Spawner->SetElapsedSecondsOverride(50.0f);
+    TestEqual(TEXT("Exponent 1 is exactly linear"), Spawner->GetDifficultyAlpha(), 0.5f, 0.001f);
     return true;
 }
 
