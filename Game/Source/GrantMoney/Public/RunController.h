@@ -6,6 +6,8 @@
 #include "GameFramework/Actor.h"
 #include "RunController.generated.h"
 
+class UHealthComponent;
+
 UENUM(BlueprintType)
 enum class EGrantMoneyRunState : uint8
 {
@@ -39,7 +41,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyBossPhaseStarted);
  *  - Active: elapsed survival time grows with game time. Remaining time is RunDurationSeconds minus
  *    elapsed, so changing the duration changes the clock at once. When nothing is left the run enters
  *    BossPhase exactly once; the clock then stays at zero.
- *  - BossPhase: waits for RequestWin or RequestLoss, to be called by the boss integration.
+ *  - BossPhase: waits for RequestWin or RequestLoss, to be called by the boss integration. RequestWin
+ *    refuses if the player is already dead (see SetPlayerHealthComponent), so a win and a loss that both
+ *    become true in the same tick always resolve to Lost: UHealthComponent marks itself dead synchronously,
+ *    before its OnDeath delegate fires, so by the time anything evaluates RequestWin the death is already
+ *    visible even if the player's own OnDeath handler (which calls RequestLoss) has not run yet that tick.
  *
  * The clock moves only when the actor ticks, so pausing the game (UGameplayStatics::SetGamePaused) and time
  * dilation affect it the way they affect everything else in the game.
@@ -72,13 +78,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void StartRun();
 
-	// BossPhase -> Won. Returns false (and changes nothing) in any other state.
+	// BossPhase -> Won. Returns false (and changes nothing) in any other state, or if the player (see
+	// SetPlayerHealthComponent) is already dead: survival is required to win, not only defeating the boss.
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	bool RequestWin();
 
 	// Active or BossPhase -> Lost. Returns false (and changes nothing) in any other state.
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	bool RequestLoss();
+
+	// Tells the run who the player is, so RequestWin can refuse victory if they have already died.
+	// Pass null to clear it (RequestWin then never refuses for this reason).
+	void SetPlayerHealthComponent(UHealthComponent* InPlayerHealth);
+
+	// Finds the one ARunController in World, or null if there is none. Used by anything that needs the
+	// run but does not own a reference to it (the player's death handler, the spawner, the HUD).
+	static ARunController* Find(const UWorld* World);
 
 	// Moves the run forward by game time. Tick calls this unless the game is paused; tests and tools can call it directly.
 	void AdvanceRun(float DeltaSeconds);
@@ -132,4 +147,7 @@ private:
 
 	// Whole seconds last reported by OnTimeChanged; -1 until the first report.
 	int32 LastReportedWholeSeconds = -1;
+
+	// Set by SetPlayerHealthComponent. Weak: the player could in principle be destroyed without clearing it.
+	TWeakObjectPtr<UHealthComponent> PlayerHealthComponent;
 };

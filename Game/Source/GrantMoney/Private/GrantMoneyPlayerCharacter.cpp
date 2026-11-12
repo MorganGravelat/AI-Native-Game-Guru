@@ -11,13 +11,17 @@
 #include "EnhancedInputComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/DamageType.h"
 #include "GameFramework/PlayerController.h"
 #include "GrantMoneyCharacterVisualData.h"
+#include "HAL/IConsoleManager.h"
 #include "HealthComponent.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
+#include "Kismet/GameplayStatics.h"
 #include "Math/RotationMatrix.h"
 #include "PickupComponent.h"
+#include "RunController.h"
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -26,6 +30,49 @@ namespace
 {
 	// Starting max health. Designers can override it on the Stats component.
 	constexpr float DefaultMaxHealth = 100.0f;
+
+#if !UE_BUILD_SHIPPING
+	// Dev-only way to end the run as a loss without waiting on real combat: "GrantMoney.DamagePlayer 1000"
+	// in the PIE console. Goes through UGameplayStatics::ApplyDamage, the same path contact damage uses.
+	// An optional delay (seconds) is useful to line the hit up with a specific moment, e.g. well after the
+	// run's Starting state so the loss is not silently refused.
+	FAutoConsoleCommandWithWorldAndArgs GDamagePlayerCommand(
+		TEXT("GrantMoney.DamagePlayer"),
+		TEXT("Dev only. Damages the first player's pawn. Usage: GrantMoney.DamagePlayer [Amount=1000] [DelaySeconds=0]"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (!World)
+			{
+				return;
+			}
+
+			const float Amount = Args.Num() > 0 ? FCString::Atof(*Args[0]) : 1000.0f;
+			const float DelaySeconds = Args.Num() > 1 ? FCString::Atof(*Args[1]) : 0.0f;
+
+			auto ApplyPlayerDamage = [World, Amount]()
+			{
+				AActor* Player = UGameplayStatics::GetPlayerPawn(World, 0);
+				if (!Player)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("GrantMoney.DamagePlayer: no player pawn."));
+					return;
+				}
+
+				UGameplayStatics::ApplyDamage(Player, Amount, nullptr, nullptr, UDamageType::StaticClass());
+				UE_LOG(LogTemp, Log, TEXT("GrantMoney.DamagePlayer: applied %.1f damage to %s."), Amount, *Player->GetName());
+			};
+
+			if (DelaySeconds > 0.0f)
+			{
+				FTimerHandle Handle;
+				World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateLambda(ApplyPlayerDamage), DelaySeconds, false);
+			}
+			else
+			{
+				ApplyPlayerDamage();
+			}
+		}));
+#endif
 }
 
 AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
@@ -118,6 +165,8 @@ void AGrantMoneyPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	Health->OnDeath.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleHealthDepleted);
+
 	ApplyVisualData();
 
 	if (bUseBuiltInLocomotion)
@@ -132,6 +181,16 @@ void AGrantMoneyPlayerCharacter::BeginPlay()
 float AGrantMoneyPlayerCharacter::GetExperience() const
 {
 	return Stats ? Stats->GetStat(EGrantMoneyStat::Experience) : 0.0f;
+}
+
+void AGrantMoneyPlayerCharacter::HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser)
+{
+	if (ARunController* Run = ARunController::Find(GetWorld()))
+	{
+		// No-op (returns false) if the run is already over or was never started; a state can be lost only
+		// once, and GrantMoneyGameMode::HandleRunStateChanged reacts to that single transition.
+		Run->RequestLoss();
+	}
 }
 
 void AGrantMoneyPlayerCharacter::Tick(float DeltaSeconds)

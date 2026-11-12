@@ -6,6 +6,7 @@
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "GameOverWidget.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputActionValue.h"
@@ -25,6 +26,7 @@ AMapCameraPlayerController::AMapCameraPlayerController()
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> PauseActionFinder(TEXT("/Game/Input/IA_Pause.IA_Pause"));
 	static ConstructorHelpers::FClassFinder<UPauseMenuWidget> PauseMenuFinder(TEXT("/Game/UI/WBP_PauseMenu"));
+	static ConstructorHelpers::FClassFinder<UGameOverWidget> GameOverFinder(TEXT("/Game/UI/WBP_GameOver"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> TurnActionFinder(TEXT("/Game/Input/IA_CameraTurn.IA_CameraTurn"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> LookUpActionFinder(TEXT("/Game/Input/IA_CameraLookUp.IA_CameraLookUp"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> ZoomActionFinder(TEXT("/Game/Input/IA_CameraZoom.IA_CameraZoom"));
@@ -37,6 +39,11 @@ AMapCameraPlayerController::AMapCameraPlayerController()
 	if (PauseMenuFinder.Succeeded())
 	{
 		PauseMenuWidgetClass = PauseMenuFinder.Class;
+	}
+
+	if (GameOverFinder.Succeeded())
+	{
+		GameOverWidgetClass = GameOverFinder.Class;
 	}
 
 	if (TurnActionFinder.Succeeded()) { CameraTurnAction = TurnActionFinder.Object; }
@@ -158,6 +165,12 @@ void AMapCameraPlayerController::HandleCameraZoom(const FInputActionValue& Value
 
 void AMapCameraPlayerController::TogglePauseMenu()
 {
+	// The run is over; nothing to pause for, and the Game Over screen owns the cursor and input mode now.
+	if (IsValid(GameOverWidget) && GameOverWidget->IsInViewport())
+	{
+		return;
+	}
+
 	if (IsValid(PauseMenuWidget) && PauseMenuWidget->IsInViewport())
 	{
 		ClosePauseMenu();
@@ -166,6 +179,46 @@ void AMapCameraPlayerController::TogglePauseMenu()
 	{
 		OpenPauseMenu();
 	}
+}
+
+void AMapCameraPlayerController::ShowGameOver(float SurvivalSeconds, float Experience)
+{
+	if (!GameOverWidgetClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("MapCameraPlayerController: WBP_GameOver class is not set."));
+		return;
+	}
+
+	// The run just ended; a pause menu open over the Game Over screen would be confusing.
+	ClosePauseMenu();
+
+	if (!IsValid(GameOverWidget))
+	{
+		GameOverWidget = CreateWidget<UGameOverWidget>(this, GameOverWidgetClass);
+	}
+
+	if (!GameOverWidget)
+	{
+		return;
+	}
+
+	GameOverWidget->SetResults(SurvivalSeconds, Experience);
+
+	if (!GameOverWidget->IsInViewport())
+	{
+		GameOverWidget->AddToViewport();
+	}
+
+	// Same mechanism the pause menu uses: pausing also freezes the player's movement and weapon timer,
+	// every enemy's pursuit and contact damage, spawning, and pickups flying in, because none of those
+	// tick or run timers while the world is paused.
+	UGameplayStatics::SetGamePaused(this, true);
+	bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetWidgetToFocus(GameOverWidget->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
 }
 
 void AMapCameraPlayerController::OpenPauseMenu()

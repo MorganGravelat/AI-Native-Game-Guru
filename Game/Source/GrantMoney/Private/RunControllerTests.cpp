@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/WorldSettings.h"
+#include "HealthComponent.h"
 #include "RunController.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/RunTestListener.h"
@@ -253,6 +254,74 @@ bool FRunControllerEndStatesTest::RunTest(const FString& Parameters)
     Lost.Run->AdvanceRun(20.0f);
     TestEqual(TEXT("The clock stops when the run is lost"), Lost.Run->GetElapsedSeconds(), 2.0f);
     TestEqual(TEXT("No boss phase after a loss"), Lost.Listener->BossPhaseEntries, 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRunControllerWinRequiresAlivePlayerTest,
+    "GrantMoney.Run.RunController.WinRequiresAlivePlayer",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRunControllerWinRequiresAlivePlayerTest::RunTest(const FString& Parameters)
+{
+    RunTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    // Unset: RequestWin behaves exactly as before (the existing WinAndLoss test covers this case).
+    Scene.Run->StartRun();
+    Scene.Run->AdvanceRun(10.0f);
+    TestTrue(TEXT("BossPhase"), Scene.Run->GetState() == EGrantMoneyRunState::BossPhase);
+
+    AActor* Player = Scene.World()->SpawnActor<AActor>();
+    UHealthComponent* PlayerHealth = NewObject<UHealthComponent>(Player);
+    PlayerHealth->RegisterComponent();
+    Scene.Run->SetPlayerHealthComponent(PlayerHealth);
+
+    TestFalse(TEXT("An alive player does not block a win"), PlayerHealth->IsDead());
+    TestTrue(TEXT("Win is granted while the player is alive"), Scene.Run->RequestWin());
+    TestTrue(TEXT("Won"), Scene.Run->GetState() == EGrantMoneyRunState::Won);
+
+    // The same race, but the player is already dead: a simultaneous win/loss must resolve to Lost.
+    RunTest::FScene Tied;
+    if (!Tied.Create(*this))
+    {
+        return false;
+    }
+
+    Tied.Run->StartRun();
+    Tied.Run->AdvanceRun(10.0f);
+    TestTrue(TEXT("BossPhase"), Tied.Run->GetState() == EGrantMoneyRunState::BossPhase);
+
+    AActor* DeadPlayer = Tied.World()->SpawnActor<AActor>();
+    UHealthComponent* DeadPlayerHealth = NewObject<UHealthComponent>(DeadPlayer);
+    DeadPlayerHealth->RegisterComponent();
+    Tied.Run->SetPlayerHealthComponent(DeadPlayerHealth);
+
+    // Killed in the same tick the boss would be defeated, before anything calls RequestLoss for it.
+    DeadPlayerHealth->ApplyDamage(1000.0f);
+    TestTrue(TEXT("The player is dead"), DeadPlayerHealth->IsDead());
+
+    TestFalse(TEXT("A dead player cannot be granted a win, regardless of call order"), Tied.Run->RequestWin());
+    TestTrue(TEXT("Still BossPhase: the win was refused, not silently dropped"), Tied.Run->GetState() == EGrantMoneyRunState::BossPhase);
+
+    // The player's own OnDeath handler calling RequestLoss (not modelled here directly; see
+    // RunLossTests.cpp) still succeeds afterward, because BossPhase was never left.
+    TestTrue(TEXT("Loss still succeeds from BossPhase"), Tied.Run->RequestLoss());
+    TestTrue(TEXT("Lost"), Tied.Run->GetState() == EGrantMoneyRunState::Lost);
+
+    // Clearing the player leaves RequestWin unaffected again (defensive: e.g. the player pawn was destroyed).
+    RunTest::FScene Cleared;
+    if (!Cleared.Create(*this))
+    {
+        return false;
+    }
+    Cleared.Run->StartRun();
+    Cleared.Run->AdvanceRun(10.0f);
+    Cleared.Run->SetPlayerHealthComponent(nullptr);
+    TestTrue(TEXT("No player set: win is granted as before"), Cleared.Run->RequestWin());
     return true;
 }
 

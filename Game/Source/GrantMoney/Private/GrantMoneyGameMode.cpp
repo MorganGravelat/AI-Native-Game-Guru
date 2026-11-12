@@ -10,11 +10,12 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GrantMoneyPlayerCharacter.h"
+#include "HealthComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MapArrays.h"
 #include "MapCameraPawn.h"
+#include "MapCameraPlayerController.h"
 #include "PlayerSpawnResolver.h"
-#include "RunController.h"
 #include "RunHUD.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -259,6 +260,8 @@ void AGrantMoneyGameMode::PrepareRun()
 		return;
 	}
 
+	RunController->OnStateChanged.AddUniqueDynamic(this, &AGrantMoneyGameMode::HandleRunStateChanged);
+
 	// The same for the spawner. The spawner finds the run controller by itself.
 	bool bHasSpawner = false;
 	for (TActorIterator<AEnemySpawner> It(World); It; ++It)
@@ -327,6 +330,14 @@ void AGrantMoneyGameMode::CheckRunReady()
 	if (IsRunReady(Reason))
 	{
 		World->GetTimerManager().ClearTimer(RunReadyTimer);
+
+		// Lets RequestWin refuse victory once this player is dead, so a simultaneous boss kill and
+		// player death always resolves to Lost (see ARunController's class comment).
+		if (AActor* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0))
+		{
+			RunController->SetPlayerHealthComponent(PlayerPawn->FindComponentByClass<UHealthComponent>());
+		}
+
 		RunController->StartRun();
 		return;
 	}
@@ -336,5 +347,29 @@ void AGrantMoneyGameMode::CheckRunReady()
 		World->GetTimerManager().ClearTimer(RunReadyTimer);
 		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: the run was not started: %s after %.0f s."), *Reason, RunReadyChecks * RunReadyPollSeconds);
 	}
+}
+
+void AGrantMoneyGameMode::HandleRunStateChanged(EGrantMoneyRunState OldState, EGrantMoneyRunState NewState)
+{
+	if (NewState != EGrantMoneyRunState::Lost)
+	{
+		// Won has no screen yet: there is no boss to reach it, so there is nothing to verify today.
+		return;
+	}
+
+	AMapCameraPlayerController* PC = Cast<AMapCameraPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: no MapCameraPlayerController to show the Game Over screen on."));
+		return;
+	}
+
+	const AGrantMoneyPlayerCharacter* PlayerCharacter = Cast<AGrantMoneyPlayerCharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
+	const float Experience = PlayerCharacter ? PlayerCharacter->GetExperience() : 0.0f;
+
+	UE_LOG(LogTemp, Log, TEXT("GrantMoneyGameMode: run lost at %.1f s survived, %.0f XP; showing the Game Over screen."),
+		RunController->GetElapsedSeconds(), Experience);
+
+	PC->ShowGameOver(RunController->GetElapsedSeconds(), Experience);
 }
 

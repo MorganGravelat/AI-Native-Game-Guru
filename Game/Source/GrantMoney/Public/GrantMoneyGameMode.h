@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/TimerHandle.h"
 #include "GameFramework/GameModeBase.h"
+#include "RunController.h"
 #include "GrantMoneyGameMode.generated.h"
 
 class AMapCameraPawn;
@@ -22,6 +23,10 @@ class ARunController;
  * AEnemySpawner. The run is started once the map has been built and the player pawn exists.
  * A RunController or EnemySpawner placed in the level is used instead of a default one, so a level
  * can set its own duration, enemy type and spawn numbers.
+ *
+ * On a loss (the player's HealthComponent reaching zero, see AGrantMoneyPlayerCharacter), it pauses the
+ * game and shows the local player's Game Over screen with survival time and XP (SCRUM-44). Restart and
+ * Quit are owned entirely by that screen (UGameOverWidget); this class only reacts to the state change.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyGameMode : public AGameModeBase
@@ -58,6 +63,12 @@ protected:
 
 	// Polls IsRunReady and starts the run once.
 	void CheckRunReady();
+
+	// Bound to RunController->OnStateChanged. On Lost, pauses the game and shows the Game Over screen
+	// with the player's survival time and XP (SCRUM-44). Does nothing for every other transition; Won
+	// has no screen yet (there is no boss to reach it).
+	UFUNCTION()
+	void HandleRunStateChanged(EGrantMoneyRunState OldState, EGrantMoneyRunState NewState);
 
 	// Defaults to AGrantMoneyPlayerCharacter.
 	UPROPERTY(EditDefaultsOnly, Category = "Classes")

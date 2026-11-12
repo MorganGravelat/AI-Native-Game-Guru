@@ -134,6 +134,8 @@ For every meaningful implementation step:
 
 Do not invent screenshots, recordings, test results, or development steps.
 
+**Manual/in-editor verification:** when the AI needs the developer to confirm something it cannot check itself (PIE behavior, UI, etc.), ask a short batch of yes/no quiz-style questions (e.g. via an elicitation tool) rather than a long free-form question or writing speculative documentation. In the ScriptDocumentation.md, just note that this quiz method was used and whether everything was confirmed; do not transcribe each individual question/answer.
+
 At the end of a task, be able to produce:
 
 1. implementation summary;
