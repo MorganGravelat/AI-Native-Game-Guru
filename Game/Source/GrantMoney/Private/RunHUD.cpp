@@ -33,11 +33,7 @@ ARunController* ARunHUD::GetRunController()
 {
 	if (!RunController.IsValid())
 	{
-		for (TActorIterator<ARunController> It(GetWorld()); It; ++It)
-		{
-			RunController = *It;
-			break;
-		}
+		RunController = ARunController::Find(GetWorld());
 	}
 
 	return RunController.Get();

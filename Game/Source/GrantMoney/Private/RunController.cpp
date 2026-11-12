@@ -4,6 +4,8 @@
 
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "HealthComponent.h"
 
 ARunController::ARunController()
 {
@@ -79,14 +81,46 @@ void ARunController::AdvanceRun(float DeltaSeconds)
 	}
 }
 
+void ARunController::SetPlayerHealthComponent(UHealthComponent* InPlayerHealth)
+{
+	PlayerHealthComponent = InPlayerHealth;
+}
+
 bool ARunController::RequestWin()
 {
+	// A dead player cannot claim victory. Checking the live fact (IsDead) rather than racing two event
+	// handlers is what makes a same-tick win/loss deterministic regardless of call order: HealthComponent
+	// marks itself dead before OnDeath broadcasts, so this is already true if the player's own death this
+	// tick has been processed at all, even if RequestLoss for it has not been called yet.
+	if (const UHealthComponent* PlayerHealth = PlayerHealthComponent.Get())
+	{
+		if (PlayerHealth->IsDead())
+		{
+			return false;
+		}
+	}
+
 	return TryTransition(EGrantMoneyRunState::Won);
 }
 
 bool ARunController::RequestLoss()
 {
 	return TryTransition(EGrantMoneyRunState::Lost);
+}
+
+ARunController* ARunController::Find(const UWorld* World)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	for (TActorIterator<ARunController> It(World); It; ++It)
+	{
+		return *It;
+	}
+
+	return nullptr;
 }
 
 float ARunController::GetRemainingSeconds() const

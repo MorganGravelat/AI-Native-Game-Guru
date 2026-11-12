@@ -109,9 +109,9 @@ void AEnemySpawner::ResolveRunController() const
 
 	NextRunLookupTime = Now + RunLookupIntervalSeconds;
 
-	for (TActorIterator<ARunController> It(World); It; ++It)
+	if (ARunController* Found = ARunController::Find(World))
 	{
-		RunController = *It;
+		RunController = Found;
 		return;
 	}
 

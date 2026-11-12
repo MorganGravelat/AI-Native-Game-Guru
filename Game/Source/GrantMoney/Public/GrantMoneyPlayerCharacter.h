@@ -24,7 +24,8 @@ struct FInputActionValue;
  * comes from a UHealthComponent backed by a UStatsComponent. It starts every run
  * with a UStarterWeaponComponent that fires at nearby enemies by itself, and a UPickupComponent that
  * draws in nearby pickups such as XP orbs. XP is the Experience stat. The view comes from
- * the map camera, not this class.
+ * the map camera, not this class. Reaching zero health ends the run as a loss (SCRUM-44): see
+ * HandleHealthDepleted, which asks the level's ARunController to transition to Lost.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyPlayerCharacter : public ACharacter
@@ -41,7 +42,6 @@ public:
 	UHealthComponent* GetHealth() const { return Health; }
 	UStarterWeaponComponent* GetStarterWeapon() const { return StarterWeapon; }
 	UPickupComponent* GetPickups() const { return Pickups; }
-
 	// Running XP total (the Experience stat). Orbs add to it when they arrive.
 	float GetExperience() const;
 protected:
@@ -92,6 +92,11 @@ protected:
 private:
 	void ApplyVisualData();
 	void PlayLocomotionAnimation(UAnimationAsset* Animation);
+
+	// Bound to Health->OnDeath. Ends the run as a loss; does nothing if no ARunController is found
+	// (for example a test world with no run set up) or the run cannot be lost from its current state.
+	UFUNCTION()
+	void HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser);
 
 	// The animation currently playing from the built-in idle/jog logic.
 	UPROPERTY(Transient)
