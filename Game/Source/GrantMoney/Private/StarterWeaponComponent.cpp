@@ -32,8 +32,8 @@ namespace
 
 	bool IsLivingEnemy(const AEnemyBase* Enemy)
 	{
-		const UHealthComponent* Health = IsValid(Enemy) ? Enemy->GetHealth() : nullptr;
-		return Health && !Health->IsDead() && !Enemy->IsActorBeingDestroyed();
+		// CanBeTargeted also rules out enemies that are still rising out of the ground.
+		return IsValid(Enemy) && Enemy->CanBeTargeted() && Enemy->GetHealth() != nullptr;
 	}
 }
 

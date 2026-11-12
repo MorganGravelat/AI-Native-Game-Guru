@@ -38,7 +38,7 @@ public:
 
 	// Nearest living enemy within TargetRange of the owner, or null if there is none.
 	// Distance is measured on the ground plane, from the owner's center to the enemy's center.
-	// Enemies that are dead (even if still in the world) are never chosen.
+	// Enemies that are dead (even if still in the world) or still emerging from the ground are never chosen.
 	virtual AActor* SelectTarget() const;
 
 	// Spawns one orb at the owner, aimed at Target's collision center, with the weapon's damage,

@@ -3,13 +3,18 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CombatEventsSubsystem.h"
+#include "Components/StaticMeshComponent.h"
+#include "ContactDamageComponent.h"
 #include "EnemyBase.h"
+#include "EnemyEmergenceComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "HealthComponent.h"
+#include "SlimeEnemy.h"
 #include "StatsComponent.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/CombatTestListener.h"
+#include "Tests/EmergenceTestTypes.h"
 
 // Characters refuse engine damage (UGameplayStatics::ApplyDamage) in a world without a Game Mode
 // (APawn::ShouldTakeDamage), and the test world has none. These tests therefore damage the enemy's
@@ -160,6 +165,117 @@ bool FEnemyBaseDeathTransformTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("The enemy was destroyed"), Enemy->IsActorBeingDestroyed());
     TestTrue(TEXT("Readable inside the kill event, before the enemy is removed"), Scene.Listener->LastKilledDeathTransform.Equals(DeathSpot, 0.01f));
     TestTrue(TEXT("Still the death spot after removal"), Enemy->GetDeathTransform().Equals(DeathSpot, 0.01f));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemyBaseEmergenceGatesBehaviourTest,
+    "GrantMoney.Combat.EnemyBase.EmergenceGatesPursuitAndDamage",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyBaseEmergenceGatesBehaviourTest::RunTest(const FString& Parameters)
+{
+    FTestWorldWrapper WorldWrapper;
+    if (!WorldWrapper.CreateTestWorld(EWorldType::Game) || !WorldWrapper.BeginPlayInTestWorld())
+    {
+        WorldWrapper.ForwardErrorMessages(this);
+        return false;
+    }
+
+    UWorld* World = WorldWrapper.GetTestWorld();
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    AChaseTestEnemy* Chaser = World->SpawnActor<AChaseTestEnemy>(AChaseTestEnemy::StaticClass(), FTransform(FVector(0.0, 0.0, 50.0)), Params);
+
+    // A plain actor with health: pawns refuse engine damage in a world without a Game Mode (see the note at the top).
+    AActor* Victim = World->SpawnActor<AActor>();
+    USceneComponent* VictimRoot = NewObject<USceneComponent>(Victim, TEXT("Root"));
+    Victim->SetRootComponent(VictimRoot);
+    VictimRoot->RegisterComponent();
+    VictimRoot->SetWorldLocation(FVector(500.0, 0.0, 50.0));
+    UHealthComponent* VictimHealth = NewObject<UHealthComponent>(Victim, TEXT("Health"));
+    VictimHealth->RegisterComponent();
+
+    if (!TestNotNull(TEXT("Chaser spawned"), Chaser))
+    {
+        return false;
+    }
+    Chaser->ChaseTarget = Victim;
+
+    // An enemy nobody told to emerge behaves as it always did.
+    TestFalse(TEXT("Not emerging by default"), Chaser->IsEmerging());
+    TestTrue(TEXT("Targetable by default"), Chaser->CanBeTargeted());
+    Chaser->Tick(0.1f);
+    TestFalse(TEXT("An ordinary enemy walks toward its target"), Chaser->GetPendingMovementInputVector().IsNearlyZero());
+    Chaser->ConsumeMovementInputVector();
+
+    // Emerging: no pursuit, no damage.
+    Chaser->GetEmergence()->Duration = 1.0f;
+    Chaser->BeginEmergence();
+    TestTrue(TEXT("Emerging after BeginEmergence"), Chaser->IsEmerging());
+    TestFalse(TEXT("Not targetable while emerging"), Chaser->CanBeTargeted());
+    Chaser->Tick(0.1f);
+    TestTrue(TEXT("No walking while emerging"), Chaser->GetPendingMovementInputVector().IsNearlyZero());
+
+    // Put the victim within reach: still no damage while emerging.
+    VictimRoot->SetWorldLocation(FVector(60.0, 0.0, 50.0));
+    TestTrue(TEXT("The victim is within reach"), Chaser->GetContactDamage()->IsInReach(Victim));
+    Chaser->Tick(0.1f);
+    TestEqual(TEXT("No contact damage while emerging"), VictimHealth->GetHealth(), VictimHealth->GetMaxHealth());
+
+    // Finished: both switch on.
+    Chaser->GetEmergence()->AdvanceEmergence(1.5f);
+    TestFalse(TEXT("No longer emerging"), Chaser->IsEmerging());
+    TestTrue(TEXT("Targetable again"), Chaser->CanBeTargeted());
+    VictimRoot->SetWorldLocation(FVector(500.0, 0.0, 50.0));
+    Chaser->Tick(0.1f);
+    TestFalse(TEXT("Walks toward the target after emerging"), Chaser->GetPendingMovementInputVector().IsNearlyZero());
+    VictimRoot->SetWorldLocation(FVector(60.0, 0.0, 50.0));
+    Chaser->Tick(0.1f);
+    TestTrue(TEXT("Contact damage works after emerging"), VictimHealth->GetHealth() < VictimHealth->GetMaxHealth());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemyBaseDeathDuringEmergenceTest,
+    "GrantMoney.Combat.EnemyBase.DeathDuringEmergence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyBaseDeathDuringEmergenceTest::RunTest(const FString& Parameters)
+{
+    EnemyTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    AEnemyBase* Enemy = Scene.Enemy;
+    Enemy->DeathCleanupDelay = 2.0f;
+    Enemy->BeginEmergence();
+    TestFalse(TEXT("A base enemy has no visual, so emergence ends at once"), Enemy->IsEmerging());
+
+    // Slimes have a visual, so they stay emerging until it is done.
+    ASlimeEnemy* Slime = Scene.WorldWrapper.GetTestWorld()->SpawnActor<ASlimeEnemy>();
+    if (!TestNotNull(TEXT("Slime spawned"), Slime))
+    {
+        return false;
+    }
+
+    Slime->DeathCleanupDelay = 2.0f;
+    Slime->BeginEmergence();
+    TestTrue(TEXT("Slime is emerging"), Slime->IsEmerging());
+    UStaticMeshComponent* Mesh = Slime->FindComponentByClass<UStaticMeshComponent>();
+    TestTrue(TEXT("Visual is flat"), Mesh && Mesh->GetRelativeScale3D().Z < 0.1);
+
+    Slime->GetHealth()->ApplyDamage(1000.0f);
+    TestFalse(TEXT("A dead slime is no longer emerging"), Slime->IsEmerging());
+    TestFalse(TEXT("A dead slime cannot be targeted"), Slime->CanBeTargeted());
+    TestTrue(TEXT("The corpse is back at its normal shape"), Mesh && Mesh->GetRelativeScale3D().Equals(FVector(0.6), 0.001));
+    TestEqual(TEXT("Kill reported once"), Scene.Listener->EnemyKilledCount, 1);
+
+    // Emerging a dead enemy does nothing.
+    Slime->BeginEmergence();
+    TestFalse(TEXT("A dead enemy cannot start emerging"), Slime->IsEmerging());
     return true;
 }
 

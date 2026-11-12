@@ -213,6 +213,8 @@ FVector ATileMapRenderer::GetCellWorldLocation(const FIntPoint& Cell) const
 
 void ATileMapRenderer::ClearGeneratedComponents()
 {
+    bMapReady = false;
+
     // Find by tag rather than a cached list: the tag survives any copy of
     // the actor, so stale components are always caught.
     TArray<UActorComponent*> Generated;
@@ -548,4 +550,6 @@ void ATileMapRenderer::BuildMap()
             GeneratedComponentTag
         );
     }
+
+    bMapReady = true;
 }

@@ -56,3 +56,8 @@ ASlimeEnemy::ASlimeEnemy()
 		PlaceholderMesh->SetStaticMesh(SphereFinder.Object);
 	}
 }
+
+USceneComponent* ASlimeEnemy::GetEmergenceVisual() const
+{
+	return PlaceholderMesh;
+}
