@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "EnemyEmergenceComponent.h"
 #include "GrantMoneyPlayerCharacter.h"
 #include "StatsComponent.h"
 #include "Tests/WeaponTestScene.h"
@@ -159,6 +160,34 @@ bool FStarterWeaponRetargetsAfterDeathTest::RunTest(const FString& Parameters)
 
     Far->GetHealth()->ApplyDamage(1000.0f);
     TestNull(TEXT("With every slime dead there is no target"), Scene.Weapon->SelectTarget());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStarterWeaponSkipsEmergingTest,
+    "GrantMoney.Weapons.StarterWeapon.SkipsEmergingEnemies",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStarterWeaponSkipsEmergingTest::RunTest(const FString& Parameters)
+{
+    WeaponTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    ASlimeEnemy* Near = Scene.SpawnSlime(FVector(300.0, 0.0, 0.0));
+    ASlimeEnemy* Far = Scene.SpawnSlime(FVector(-600.0, 0.0, 0.0));
+    Near->BeginEmergence();
+    TestTrue(TEXT("The near slime is still emerging"), Near->IsEmerging());
+    TestTrue(TEXT("The weapon skips it and takes the farther, ready slime"), Scene.Weapon->SelectTarget() == Far);
+
+    Far->BeginEmergence();
+    TestNull(TEXT("Nothing is targeted while every slime is emerging"), Scene.Weapon->SelectTarget());
+    TestFalse(TEXT("No shot is fired at an emerging slime"), Scene.Weapon->TryFire());
+
+    Near->GetEmergence()->AdvanceEmergence(10.0f);
+    TestTrue(TEXT("Once it has emerged it is targeted"), Scene.Weapon->SelectTarget() == Near);
     return true;
 }
 

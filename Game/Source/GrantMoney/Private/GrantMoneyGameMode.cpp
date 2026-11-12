@@ -3,14 +3,19 @@
 
 #include "GrantMoneyGameMode.h"
 
+#include "TimerManager.h"
 #include "Components/CapsuleComponent.h"
+#include "EnemySpawner.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GrantMoneyPlayerCharacter.h"
+#include "Kismet/GameplayStatics.h"
 #include "MapArrays.h"
 #include "MapCameraPawn.h"
 #include "PlayerSpawnResolver.h"
+#include "RunController.h"
+#include "RunHUD.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
@@ -21,6 +26,10 @@ namespace
 {
 	// Gap between the bottom of the capsule and the tile surface, so the start is not touching the ground slab.
 	constexpr float SpawnGroundClearance = 5.0f;
+
+	// How often, and for how long, to wait for the map to be built before giving up on starting the run.
+	constexpr float RunReadyPollSeconds = 0.1f;
+	constexpr int32 RunReadyMaxChecks = 100;
 }
 
 AGrantMoneyGameMode::AGrantMoneyGameMode()
@@ -28,7 +37,10 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 	PlayerCharacterClass = AGrantMoneyPlayerCharacter::StaticClass();
 	CameraPawnClass = AMapCameraPawn::StaticClass();
 	SkyLightingClass = ASkyLightingActor::StaticClass();
+	RunControllerClass = ARunController::StaticClass();
+	EnemySpawnerClass = AEnemySpawner::StaticClass();
 	DefaultPawnClass = PlayerCharacterClass;
+	HUDClass = ARunHUD::StaticClass();
 }
 
 void AGrantMoneyGameMode::BeginPlay()
@@ -207,6 +219,122 @@ void AGrantMoneyGameMode::HandleStartingNewPlayer_Implementation(APlayerControll
 		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: camera pawn could not be spawned; falling back to the character's view."));
 		NewPlayer->bAutoManageActiveCameraTarget = true;
 		NewPlayer->AutoManageActiveCameraTarget(PlayerPawn);
+	}
+
+	// A Blueprint game mode can still save an older HUD class; the run readout must show regardless.
+	if (!NewPlayer->GetHUD() || !NewPlayer->GetHUD()->IsA<ARunHUD>())
+	{
+		NewPlayer->ClientSetHUD(ARunHUD::StaticClass());
+	}
+
+	PrepareRun();
+}
+
+void AGrantMoneyGameMode::PrepareRun()
+{
+	UWorld* World = GetWorld();
+	if (!World || IsValid(RunController))
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// A controller placed in the level wins, so a level can set its own duration.
+	for (TActorIterator<ARunController> It(World); It; ++It)
+	{
+		RunController = *It;
+		break;
+	}
+
+	if (!IsValid(RunController) && RunControllerClass)
+	{
+		RunController = World->SpawnActor<ARunController>(RunControllerClass, FTransform::Identity, SpawnParams);
+	}
+
+	if (!IsValid(RunController))
+	{
+		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: no run controller could be created, so the run will not start."));
+		return;
+	}
+
+	// The same for the spawner. The spawner finds the run controller by itself.
+	bool bHasSpawner = false;
+	for (TActorIterator<AEnemySpawner> It(World); It; ++It)
+	{
+		bHasSpawner = true;
+		break;
+	}
+
+	if (!bHasSpawner && EnemySpawnerClass)
+	{
+		World->SpawnActor<AEnemySpawner>(EnemySpawnerClass, FTransform::Identity, SpawnParams);
+	}
+
+	// Wait for the map to be built (the TileMapRenderer builds it at BeginPlay) before the clock starts.
+	RunReadyChecks = 0;
+	World->GetTimerManager().SetTimer(RunReadyTimer, this, &AGrantMoneyGameMode::CheckRunReady, RunReadyPollSeconds, true);
+	CheckRunReady();
+}
+
+bool AGrantMoneyGameMode::IsRunReady(FString& OutReason) const
+{
+	const UWorld* World = GetWorld();
+	const ATileMapRenderer* Renderer = nullptr;
+	for (TActorIterator<ATileMapRenderer> It(World); It; ++It)
+	{
+		Renderer = *It;
+		break;
+	}
+
+	if (!Renderer)
+	{
+		OutReason = TEXT("the level has no TileMapRenderer");
+		return false;
+	}
+
+	if (!Renderer->IsMapReady())
+	{
+		OutReason = TEXT("the map has not been built");
+		return false;
+	}
+
+	if (!IsValid(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		OutReason = TEXT("the player has no pawn");
+		return false;
+	}
+
+	return true;
+}
+
+void AGrantMoneyGameMode::CheckRunReady()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (!IsValid(RunController) || RunController->HasStarted())
+	{
+		World->GetTimerManager().ClearTimer(RunReadyTimer);
+		return;
+	}
+
+	FString Reason;
+	if (IsRunReady(Reason))
+	{
+		World->GetTimerManager().ClearTimer(RunReadyTimer);
+		RunController->StartRun();
+		return;
+	}
+
+	if (++RunReadyChecks >= RunReadyMaxChecks)
+	{
+		World->GetTimerManager().ClearTimer(RunReadyTimer);
+		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: the run was not started: %s after %.0f s."), *Reason, RunReadyChecks * RunReadyPollSeconds);
 	}
 }
 

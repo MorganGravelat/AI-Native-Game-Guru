@@ -9,6 +9,7 @@
 
 class AXpOrbPickup;
 class UContactDamageComponent;
+class UEnemyEmergenceComponent;
 class UHealthComponent;
 class UStatsComponent;
 
@@ -24,6 +25,9 @@ class UStatsComponent;
  * Override HandleDeath for per-type death effects.
  * Derive from this class and change the properties; override FindTarget or
  * GetMoveDirection to change who is chased or how.
+ *
+ * A spawner can have the enemy rise out of the ground first (BeginEmergence). While emerging the enemy
+ * stands still, does no contact damage and is skipped by automatic weapon targeting (CanBeTargeted).
  */
 UCLASS()
 class GRANTMONEY_API AEnemyBase : public ACharacter
@@ -56,6 +60,22 @@ public:
 	// stops and is removed. A drop system reads it from UCombatEventsSubsystem::OnEnemyKilled to
 	// spawn items at this spot. Identity until the enemy dies.
 	const FTransform& GetDeathTransform() const { return DeathTransform; }
+
+	// Starts the emergence presentation (see UEnemyEmergenceComponent) on GetEmergenceVisual().
+	// Until it finishes the enemy does not chase, does not hurt anyone, and cannot be targeted by weapons.
+	// A spawner calls this right after spawning; enemies that are never told to emerge behave as before.
+	// Does nothing if the enemy is dead or already emerging.
+	void BeginEmergence();
+
+	// True from BeginEmergence until the animation finishes (or the enemy dies).
+	UFUNCTION(BlueprintPure, Category = "Enemy|Emergence")
+	bool IsEmerging() const { return bIsEmerging; }
+
+	// True if automatic weapons may choose this enemy: it is alive, not being removed and not emerging.
+	UFUNCTION(BlueprintPure, Category = "Enemy|Combat")
+	bool CanBeTargeted() const;
+
+	UEnemyEmergenceComponent* GetEmergence() const { return Emergence; }
 
 	// Seconds a dead enemy stays in the level (stopped, no collision) before it is destroyed,
 	// e.g. for a death animation. 0 destroys it straight away.
@@ -106,6 +126,14 @@ protected:
 	// Returns the actor to chase, or null if there is none. Defaults to the first player's pawn.
 	virtual AActor* FindTarget() const;
 
+	// The component that rises out of the ground during emergence, or null for no visual (emergence then
+	// takes no time). Enemy types return their mesh here; a replacement mesh only needs to be returned from here.
+	virtual USceneComponent* GetEmergenceVisual() const { return nullptr; }
+
+	// Timing and starting shape of the emergence. Edit Duration and FlattenedScale on it.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Enemy|Emergence")
+	TObjectPtr<UEnemyEmergenceComponent> Emergence;
+
 	// Sets Target from FindTarget. Returns true if a valid target is held afterwards.
 	bool AcquireTarget();
 
@@ -121,6 +149,12 @@ private:
 	// Bound to Health->OnDeath; forwards to HandleDeath.
 	UFUNCTION()
 	void HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser);
+
+	// Bound to Emergence->OnFinished. Turns pursuit and contact damage on.
+	UFUNCTION()
+	void HandleEmergenceFinished(UEnemyEmergenceComponent* FinishedEmergence);
+
+	bool bIsEmerging = false;
 
 	// Not saved or shown as an editable value; found again every run.
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Enemy|Debug")

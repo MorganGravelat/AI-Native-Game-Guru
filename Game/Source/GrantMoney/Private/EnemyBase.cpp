@@ -5,6 +5,7 @@
 
 #include "CombatEventsSubsystem.h"
 #include "ContactDamageComponent.h"
+#include "EnemyEmergenceComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -79,8 +80,31 @@ AEnemyBase::AEnemyBase()
 	Stats->SetBaseStat(EGrantMoneyStat::AttackInterval, DefaultEnemyAttackInterval);
 	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 	ContactDamage = CreateDefaultSubobject<UContactDamageComponent>(TEXT("ContactDamage"));
+	Emergence = CreateDefaultSubobject<UEnemyEmergenceComponent>(TEXT("Emergence"));
 
 	XpOrbClass = AXpOrbPickup::StaticClass();
+}
+
+void AEnemyBase::BeginEmergence()
+{
+	if (bIsEmerging || Health->IsDead() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+
+	bIsEmerging = true;
+	Emergence->OnFinished.AddUniqueDynamic(this, &AEnemyBase::HandleEmergenceFinished);
+	Emergence->Begin(GetEmergenceVisual());
+}
+
+void AEnemyBase::HandleEmergenceFinished(UEnemyEmergenceComponent* FinishedEmergence)
+{
+	bIsEmerging = false;
+}
+
+bool AEnemyBase::CanBeTargeted() const
+{
+	return !bIsEmerging && !IsActorBeingDestroyed() && !Health->IsDead();
 }
 
 void AEnemyBase::BeginPlay()
@@ -104,6 +128,10 @@ void AEnemyBase::HandleDeath(AActor* Killer)
 	SetActorTickEnabled(false);
 	SetActorEnableCollision(false);
 	GetCharacterMovement()->DisableMovement();
+
+	// A death mid-emergence leaves the body in its normal shape, not frozen flat.
+	bIsEmerging = false;
+	Emergence->Cancel();
 
 	// Drop before the enemy is removed, at the spot it died.
 	SpawnPickupDrops();
@@ -157,6 +185,12 @@ void AEnemyBase::SpawnPickupDrops()
 void AEnemyBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// Rising out of the ground: no chasing and no hitting until the animation is done.
+	if (bIsEmerging)
+	{
+		return;
+	}
 
 	// The player may not exist yet, or may have been replaced, so look again whenever the target is gone.
 	if (!IsValid(Target) && !AcquireTarget())

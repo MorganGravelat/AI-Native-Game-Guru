@@ -92,6 +92,14 @@ public:
     // [X][Y] indices as FGrantMoneyMapData.
     FVector GetCellWorldLocation(const FIntPoint& Cell) const;
 
+    // Width of one map cell in Unreal units (the grid spacing GetCellWorldLocation uses).
+    static float GetCellSize() { return TileSize; }
+
+    // True once the map, its ground collision and its walls have been built (at BeginPlay in a
+    // game world). False before that, after the map is cleared, and when the build failed.
+    // Gameplay that traces against the ground should wait for it.
+    bool IsMapReady() const { return bMapReady; }
+
     virtual void OnConstruction(const FTransform& Transform) override;
 
     // ComponentTags entry on every generated component, so they can be found
@@ -144,6 +152,9 @@ private:
     // Set by OnConstruction so PostEditChangeProperty does not rebuild twice.
     bool bConstructedDuringEdit = false;
 #endif
+
+    // Set at the end of a successful BuildMap, cleared by ClearGeneratedComponents.
+    bool bMapReady = false;
 
     // Unreal uses centimeters.
     // The built-in plane is approximately 100 x 100 Unreal units.

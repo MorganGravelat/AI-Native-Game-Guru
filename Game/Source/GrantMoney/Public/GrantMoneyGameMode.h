@@ -3,17 +3,25 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/TimerHandle.h"
 #include "GameFramework/GameModeBase.h"
 #include "GrantMoneyGameMode.generated.h"
 
 class AMapCameraPawn;
 class ASkyLightingActor;
+class AEnemySpawner;
+class ARunController;
 
 /**
  * Spawns the player character on a safe cell of the level's generated map and
  * has the player possess it. The PlayerStart is only a fallback.
  * The Module 1 camera is spawned as a separate, unpossessed actor, kept as the
  * player's view target, and set to follow the character.
+ *
+ * It also sets up the timed run: one ARunController and, unless the level has its own, a default
+ * AEnemySpawner. The run is started once the map has been built and the player pawn exists.
+ * A RunController or EnemySpawner placed in the level is used instead of a default one, so a level
+ * can set its own duration, enemy type and spawn numbers.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyGameMode : public AGameModeBase
@@ -34,10 +42,22 @@ public:
 	// Spawns on the generated map's safe start. Falls back to StartSpot (the PlayerStart) with an error log.
 	virtual APawn* SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot) override;
 
+	// The run's clock and state, or null before the first player has joined.
+	ARunController* GetRunController() const { return RunController; }
+
 protected:
 	// Finds the level's TileMapRenderer and returns the first safe cell where PawnClass fits without blocking overlaps.
 	// Logs the reason and returns false on failure.
 	bool FindSafeSpawnLocation(UClass* PawnClass, FVector& OutLocation) const;
+
+	// Makes sure the level has a run controller and a spawner, then starts the run as soon as it is ready.
+	void PrepareRun();
+
+	// True when the level's map has been built and the player has a pawn. OutReason says what is missing.
+	bool IsRunReady(FString& OutReason) const;
+
+	// Polls IsRunReady and starts the run once.
+	void CheckRunReady();
 
 	// Defaults to AGrantMoneyPlayerCharacter.
 	UPROPERTY(EditDefaultsOnly, Category = "Classes")
@@ -51,7 +71,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Classes")
 	TSubclassOf<ASkyLightingActor> SkyLightingClass;
 
+	// Defaults to ARunController (3 minute run). Spawned only when the level has no ARunController. Make a
+	// Blueprint child to change the duration for every level, or place one in a level to change it for that level.
+	UPROPERTY(EditDefaultsOnly, Category = "Run")
+	TSubclassOf<ARunController> RunControllerClass;
+
+	// Defaults to AEnemySpawner (slimes). Spawned only when the level has no AEnemySpawner. Null disables it.
+	UPROPERTY(EditDefaultsOnly, Category = "Run")
+	TSubclassOf<AEnemySpawner> EnemySpawnerClass;
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<AMapCameraPawn> CameraPawn;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ARunController> RunController;
+
+	FTimerHandle RunReadyTimer;
+	int32 RunReadyChecks = 0;
 };
