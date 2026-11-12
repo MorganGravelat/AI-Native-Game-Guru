@@ -31,8 +31,11 @@ struct FEnemySpawnBatchResult
  * Spawning is not a fixed rate: it ramps up as the run goes on, from slow and small to fast and large.
  * Difficulty follows the ARunController's survival time (GetElapsedSeconds), going from 0 at the start of
  * the run to 1 at DifficultyRampSeconds and staying at 1 after that (and through BossPhase, though
- * spawning itself stops there). At difficulty 0 the spawner uses the "AtStart" values below; at 1, the
- * "AtEnd" values; in between it interpolates (optionally reshaped by DifficultyCurve). Every
+ * spawning itself stops there — see IsSpawningAllowed). Since GetElapsedSeconds is itself frozen outside
+ * the Active state, difficulty cannot progress while paused or during BossPhase either. At difficulty 0
+ * the spawner uses the "AtStart" values below; at 1, the "AtEnd" values; in between it interpolates,
+ * eased by DifficultyCurveExponent (or reshaped by DifficultyCurve if one is set) so the default feel
+ * already begins gently and saves the busiest pressure for the end (SCRUM-37). Every
  * GetCurrentSpawnInterval() seconds of game time it tries to spawn GetCurrentBatchSize() enemies of
  * EnemyClass:
  *  - Position: a random point in the ring MinSpawnDistance..MaxSpawnDistance around the player (ground
@@ -75,7 +78,9 @@ public:
 	// How spawning ramps up over the run: interval shrinks and batch size and the cap grow from the
 	// "AtStart" values to the "AtEnd" values as the run's survival time goes from 0 to
 	// DifficultyRampSeconds, then holds at the "AtEnd" values. Several spawners ramp together because
-	// they all follow the same ARunController. See GetDifficultyAlpha.
+	// they all follow the same ARunController. By default (no DifficultyCurve asset) the ramp eases in
+	// via DifficultyCurveExponent rather than rising in a straight line, so the run begins gently, picks
+	// up through the middle, and is noticeably busier by the end (SCRUM-37). See GetDifficultyAlpha.
 
 	// Seconds of game time between batches at the start of the run.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Difficulty", meta = (ClampMin = "0.05", Units = "s"))
@@ -107,9 +112,17 @@ public:
 
 	// Optional. Reshapes the ramp: the straight-line fraction of DifficultyRampSeconds elapsed (0..1) is
 	// looked up on this curve and the result (also expected 0..1) is used as the difficulty instead, so a
-	// designer can make it start slower, end in a rush, or stair-step. Leave empty for a straight line.
+	// designer can make it start slower, end in a rush, or stair-step. Leave empty to use
+	// DifficultyCurveExponent instead (a plain float, no curve asset needed).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Difficulty")
 	TObjectPtr<class UCurveFloat> DifficultyCurve;
+
+	// Used only when DifficultyCurve is not set. Shapes the straight-line ramp fraction (0..1) by raising
+	// it to this power before using it as the difficulty: above 1 eases in (slow at first, accelerating
+	// toward the end — the default, so a run begins gently and is noticeably busier by the end without
+	// needing a curve asset); 1 is a straight line; below 1 front-loads the difficulty instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Difficulty", meta = (ClampMin = "0.01"))
+	float DifficultyCurveExponent = 1.6f;
 
 	// Random positions tried for each enemy before it is skipped.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Placement", meta = (ClampMin = "1"))
@@ -154,8 +167,9 @@ public:
 	int32 GetActiveEnemyCount() const;
 
 	// 0 at the start of the ramp (survival time 0), 1 once DifficultyRampSeconds of survival time have
-	// passed, shaped by DifficultyCurve if one is set. Survival time comes from the resolved
-	// ARunController, or from SetElapsedSecondsOverride if that was used.
+	// passed, shaped by DifficultyCurve if one is set, else by DifficultyCurveExponent. Survival time
+	// comes from the resolved ARunController, or from SetElapsedSecondsOverride if that was used. Frozen
+	// whenever survival time is (paused, or outside the Active state — see ARunController::GetElapsedSeconds).
 	UFUNCTION(BlueprintPure, Category = "Difficulty")
 	float GetDifficultyAlpha() const;
 

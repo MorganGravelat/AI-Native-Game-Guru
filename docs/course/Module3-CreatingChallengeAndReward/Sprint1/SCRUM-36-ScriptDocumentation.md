@@ -15,9 +15,36 @@ upgrade exists in code but is deliberately left out of the offered pool for now 
 - **Media Capture List:** every screenshot and clip to record, with file names
 
 **Status:** the code and tests are written. **The project builds, and the full `GrantMoney.*` Automation
-suite passes: 122 of 122, 19 of them new** (run by the AI session on this machine, 2026-11-12). **The
-developer has not yet created `WBP_LevelUp` or tested the flow in PIE** — this is the next step, using
-this project's established yes/no quiz method once the widget exists (see §9, Pending).
+suite passes: 122 of 122, 19 of them new** (run by the AI session on this machine, 2026-11-12), **plus a
+later Projectile Count behaviour change (Addendum 2) re-tested on its own: `StarterWeapon.*` 13 of 13**.
+**The developer has not yet created `WBP_LevelUp` or tested the flow in PIE** — this is the next step,
+using this project's established yes/no quiz method once the widget exists (see §9, Pending).
+
+## Addendum 2 (same day, a later request): Projectile Count always fires at one target, staggered
+
+A third follow-up request: the developer wanted Projectile Count to never split a burst across several
+enemies. Previously (see Step 6 in §6, and the original §4 table), `TryFire` selected up to
+`GetEffectiveProjectileCount()` *distinct* nearest enemies via `SelectTargets(N)` and fired one orb at
+each, all in the same frame. That method and that behaviour are now gone entirely.
+
+**New behaviour:** `TryFire` always selects exactly one target (`SelectTarget`, unchanged — the original
+single-target rule). Every orb in the cycle fires at that same target: the first immediately, then one
+more every `ProjectileStaggerSeconds` (new property, default 0.08 s) — a visible staggered volley of
+bullets at one enemy, rather than several orbs appearing simultaneously at different ones. If the target
+dies or is removed partway through a burst, the remaining orbs are simply skipped (`FireAt` already
+refuses an invalid target) — never redirected to a different enemy. A stagger of 0 fires the whole burst
+on the same frame, if that look is ever wanted instead.
+
+`SelectTargets(int32 Count)` was deleted (header and implementation) along with
+`FStarterWeaponProjectileCountTest`'s old distinct-targets scenario; replaced with
+`ProjectileCountFiresStaggeredAtOneTarget`, which checks the staggered spawn timing, the exact final
+orb count, and that a second (decoy) enemy in range is never touched. Everywhere else in this document
+that still describes `SelectTargets`/"distinct targets" (the original §4 table row, §6 Step 6, §8.2, the
+architecture diagram in §3, and the commit message in §12) describes the **original** implementation,
+kept as a historical record of what shipped first; this addendum is the current behaviour.
+
+Rebuilt and re-tested: `GrantMoney.Weapons.StarterWeapon.*` — **13 of 13 passed** (1 replaced). The rest
+of the suite was not re-run this pass (nothing else was touched).
 
 ## Addendum (same day, after initial implementation): pool change and an explosion-timing fix
 
@@ -36,7 +63,7 @@ built and tested:
    penetrating hit) or it missed entirely — not at the moment it actually touched an enemy. Fixed: the
    orb now spends its one explosion charge the instant it lands its first direct hit, then keeps flying
    through any remaining penetration as a normal (non-exploding) hit — it can never explode a second time
-   off the same orb. A totcreating WBP_LevelUp (parent class LevelUpWidget, three Option1Text/Option1Button...Option3Text/Option3Button pairs, same pattern as WBP_GameOver), then setting it on BP_MapCameraPlayerController if not auto-resolved. Once that's done, try leveling up, picking upgrades, stacking to the limit, a multi-level pickup, and a restart — happy to run another quick yes/no quiz once you've done that.al miss (no direct hit before the orb's lifetime ends) still spends an unused
+   off the same orb. A total miss (no direct hit before the orb's lifetime ends) still spends an unused
    charge on expiry, same as before. See §6 Step 7 (rewritten) and §8.4 for a real bug this surfaced and fixed.
 
 **What is and is not evidence in this document:**
@@ -70,7 +97,7 @@ At the time of writing, only the first three kinds apply; "Developer reported" i
 | Reusable upgrade definitions: display text, stat, magnitude, stack limits | `FGrantMoneyUpgradeDefinition` (`UpgradeTypes.h`) | `UpgradeComponent.Defaults` |
 | Applied through existing stats/weapon interfaces; combine with SCRUM-53 boosts | `UUpgradeComponent::ApplyUpgrade` calls `UStatsComponent::AddModifier`, the exact call `AStatBoostPickup` already uses | `UpgradeComponent.ChooseAppliesModifier` |
 | Damage, Attack Speed, Penetration, Projectile Count, AOE explosion starter upgrades | 5 code-default entries in `UUpgradeComponent`'s constructor (see §4) | `UpgradeComponent.Defaults`; weapon-side behaviour below |
-| Penetration and multi-projectile behaviour clearly defined; no double-damage | `UAttackHitComponent::TryAreaHit` (ignores penetration exhaustion, still respects the existing hit-once-per-target set); `UStarterWeaponComponent::SelectTargets`/`TryFire` (fires exactly N orbs at the N nearest distinct living enemies, reusing the nearest available target via modulo if fewer enemies exist than orbs) | `AttackHitComponent.TryAreaHit*`, `StarterWeapon.ProjectileCountFiresAtDistinctTargets`, `MagicOrb.Explosion*` |
+| Penetration and multi-projectile behaviour clearly defined; no double-damage | `UAttackHitComponent::TryAreaHit` (ignores penetration exhaustion, still respects the existing hit-once-per-target set); `UStarterWeaponComponent::TryFire`/`FireStaggeredVolley` (fires all N orbs at the single nearest target, staggered — see **Addendum 2**, which replaced the original distinct-targets design) | `AttackHitComponent.TryAreaHit*`, `StarterWeapon.ProjectileCountFiresStaggeredAtOneTarget`, `MagicOrb.Explosion*` |
 | Level and XP progress exposed to the HUD | `ARunHUD::DrawHUD` reads the player's `GetLevelComponent()` | `// NO-TEST:` (pure UI glue, like the rest of `RunHUD.cpp`) |
 | Verify upgrades change gameplay, stacking limits, multiple pending level-ups, restart clears progression | Automation tests below for everything except restart (restart reuses SCRUM-44's `OpenLevel`-based reset, which already resets every actor and component with no run-scoped state outside the `UWorld`; not re-tested here, see §10) | See §9 |
 

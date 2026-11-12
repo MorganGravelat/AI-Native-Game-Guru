@@ -4,6 +4,7 @@
 #include "EnemyBase.h"
 
 #include "CombatEventsSubsystem.h"
+#include "Components/CapsuleComponent.h"
 #include "ContactDamageComponent.h"
 #include "EnemyEmergenceComponent.h"
 #include "Engine/World.h"
@@ -73,6 +74,12 @@ AEnemyBase::AEnemyBase()
 
 	// With no controller, character movement would otherwise not run at all.
 	Movement->bRunPhysicsWithNoController = true;
+
+	// ACharacter's own constructor sets this to No (so players cannot casually stand on each other's
+	// heads), which would otherwise silently defeat climbing over/stacking on other enemies entirely,
+	// no matter how MaxStepHeight below is tuned (SCRUM-29). Enemies specifically want that, so it is
+	// turned back on here.
+	GetCapsuleComponent()->CanCharacterStepUpOn = ECB_Yes;
 
 	Stats = CreateDefaultSubobject<UStatsComponent>(TEXT("Stats"));
 	Stats->SetBaseStat(EGrantMoneyStat::MaxHealth, DefaultEnemyMaxHealth);
@@ -267,7 +274,13 @@ void AEnemyBase::MoveTowardTarget()
 		Speed *= FMath::Clamp(Remaining / SlowdownDistance, 0.0f, 1.0f);
 	}
 
-	GetCharacterMovement()->MaxWalkSpeed = Speed;
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->MaxWalkSpeed = Speed;
+
+	// Applied every frame too, so traversal can be tuned while playing (SCRUM-29). The movement
+	// component does the actual stepping/sliding itself; this only sets how far it is allowed to go.
+	Movement->MaxStepHeight = MaxStepHeight;
+	Movement->SetWalkableFloorAngle(MaxWalkableFloorAngle);
 
 	const FVector Direction = GetMoveDirection();
 	if (!Direction.IsNearlyZero())

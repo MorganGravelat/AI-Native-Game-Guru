@@ -29,10 +29,13 @@ class AMagicOrbProjectile;
  * the same rule UAttackHitComponent and UContactDamageComponent use. ProjectileCount and
  * ExplosionRadius (SCRUM-36 upgrades) follow the exact same rule.
  *
- * With ProjectileCount above 1, TryFire fires that many orbs in the same cycle, one each at up to that
- * many distinct living enemies in range (nearest first); with fewer enemies in range than orbs, the
- * extra orbs re-target the same enemies rather than being skipped. With ExplosionRadius above 0, every
- * orb also bursts once it is used up or expires (see AMagicOrbProjectile).
+ * With ProjectileCount above 1, TryFire still picks exactly one target (SelectTarget, unchanged) and
+ * fires every orb at that same target — it never splits a cycle's orbs across several enemies. The
+ * first orb fires immediately; each further orb follows ProjectileStaggerSeconds after the last, so the
+ * burst is visibly a quick volley of bullets rather than orbs appearing simultaneously. If the target
+ * dies or disappears partway through a burst, the remaining orbs are simply skipped (FireAt already
+ * refuses an invalid target), never redirected to a different enemy. With ExplosionRadius above 0,
+ * every orb also bursts once it is used up or expires (see AMagicOrbProjectile).
  */
 UCLASS(ClassGroup = (Combat), meta = (BlueprintSpawnableComponent))
 class GRANTMONEY_API UStarterWeaponComponent : public UActorComponent
@@ -47,17 +50,14 @@ public:
 	// Enemies that are dead (even if still in the world) or still emerging from the ground are never chosen.
 	virtual AActor* SelectTarget() const;
 
-	// Up to Count distinct living enemies within TargetRange, nearest first (same rule as SelectTarget).
-	// Fewer than Count if fewer are in range; empty if none are. Count below 1 is treated as 1.
-	virtual TArray<AActor*> SelectTargets(int32 Count) const;
-
 	// Spawns one orb at the owner, aimed at Target's collision center, with the weapon's damage,
 	// speed and lifetime. Returns the orb, or null if it could not be fired.
 	virtual AMagicOrbProjectile* FireAt(AActor* Target);
 
-	// One firing interval: selects up to GetEffectiveProjectileCount() targets and fires one orb at
-	// each (reusing targets if there are fewer enemies in range than orbs), or skips the whole cycle if
-	// nothing is in range at all. Returns true if at least one orb was fired.
+	// One firing interval: picks a single target (SelectTarget) and fires GetEffectiveProjectileCount()
+	// orbs at it, the first immediately and the rest staggered (see ProjectileStaggerSeconds), or skips
+	// the whole cycle if nothing is in range at all. Returns true if the first orb fired; the staggered
+	// ones (if any) are started regardless, since they only ever fire if that first shot did.
 	bool TryFire();
 
 	// Damage per orb after the owner's Damage stat modifiers.
@@ -98,6 +98,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "1"))
 	int32 ProjectileCount = 1;
 
+	// With ProjectileCount above 1, seconds between each orb in the burst (all aimed at the same
+	// target): the first orb fires immediately, then one more every this many seconds. Small values
+	// read as a quick staggered volley; 0 fires every orb on the same frame instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0", Units = "s"))
+	float ProjectileStaggerSeconds = 0.08f;
+
 	// Burst radius (cm) each orb leaves behind when it is used up or expires. 0 (the default) means no burst.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0", Units = "cm"))
 	float ExplosionRadius = 0.0f;
@@ -128,5 +134,16 @@ private:
 	// Starts the countdown to the next shot, using the current effective fire interval.
 	void ScheduleNextShot();
 
+	// Starts (or restarts) the staggered part of a burst: ExtraShots more orbs at Target, one every
+	// ProjectileStaggerSeconds, or all of them immediately if that is 0. Does nothing if ExtraShots <= 0.
+	void FireStaggeredVolley(AActor* Target, int32 ExtraShots);
+
+	// Fires one staggered orb at PendingStaggerTarget (skipped, not redirected, if it is no longer
+	// valid — FireAt already refuses a bad target) and counts down PendingStaggeredShots.
+	void HandleStaggerTimer();
+
 	FTimerHandle FireTimerHandle;
+	FTimerHandle StaggerTimerHandle;
+	TWeakObjectPtr<AActor> PendingStaggerTarget;
+	int32 PendingStaggeredShots = 0;
 };

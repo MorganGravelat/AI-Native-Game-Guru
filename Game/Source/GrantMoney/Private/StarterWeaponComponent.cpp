@@ -58,6 +58,7 @@ void UStarterWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(FireTimerHandle);
+		World->GetTimerManager().ClearTimer(StaggerTimerHandle);
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -115,49 +116,6 @@ AActor* UStarterWeaponComponent::SelectTarget() const
 	return Nearest;
 }
 
-TArray<AActor*> UStarterWeaponComponent::SelectTargets(int32 Count) const
-{
-	TArray<AActor*> Result;
-
-	const AActor* Owner = GetOwner();
-	const UWorld* World = GetWorld();
-	if (!Owner || !World)
-	{
-		return Result;
-	}
-
-	const int32 WantedCount = FMath::Max(1, Count);
-	const FVector OwnerLocation = Owner->GetActorLocation();
-	const double RangeSquared = FMath::Square(static_cast<double>(TargetRange));
-
-	// Collect every living, in-range enemy with its distance, then keep the nearest WantedCount.
-	TArray<TPair<double, AEnemyBase*>> InRange;
-	for (TActorIterator<AEnemyBase> It(World); It; ++It)
-	{
-		AEnemyBase* Enemy = *It;
-		if (!IsLivingEnemy(Enemy))
-		{
-			continue;
-		}
-
-		const double DistanceSquared = FVector::DistSquared2D(OwnerLocation, Enemy->GetActorLocation());
-		if (DistanceSquared <= RangeSquared)
-		{
-			InRange.Emplace(DistanceSquared, Enemy);
-		}
-	}
-
-	InRange.Sort([](const TPair<double, AEnemyBase*>& A, const TPair<double, AEnemyBase*>& B) { return A.Key < B.Key; });
-
-	Result.Reserve(FMath::Min(WantedCount, InRange.Num()));
-	for (int32 Index = 0; Index < InRange.Num() && Index < WantedCount; ++Index)
-	{
-		Result.Add(InRange[Index].Value);
-	}
-
-	return Result;
-}
-
 AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 {
 	AActor* Owner = GetOwner();
@@ -196,35 +154,65 @@ AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 
 bool UStarterWeaponComponent::TryFire()
 {
-	const int32 ShotCount = FMath::Max(1, GetEffectiveProjectileCount());
-
-	// The common case (no Projectile Count upgrade taken) keeps using the original single-target path
-	// unchanged, so every existing single-target behaviour (including tie-breaking) stays identical.
-	if (ShotCount <= 1)
-	{
-		AActor* Target = SelectTarget();
-		if (!Target)
-		{
-			return false;
-		}
-
-		return FireAt(Target) != nullptr;
-	}
-
-	const TArray<AActor*> Targets = SelectTargets(ShotCount);
-	if (Targets.IsEmpty())
+	// Always exactly one target (unchanged rule); a Projectile Count upgrade affects how many orbs
+	// fire at it and how they are paced, never how many different enemies are hit per cycle.
+	AActor* Target = SelectTarget();
+	if (!Target)
 	{
 		return false;
 	}
 
-	// Fewer enemies in range than orbs: the extra orbs re-target the nearest ones rather than being skipped.
-	bool bFiredAny = false;
-	for (int32 Index = 0; Index < ShotCount; ++Index)
+	const bool bFiredFirst = FireAt(Target) != nullptr;
+	if (bFiredFirst)
 	{
-		bFiredAny |= (FireAt(Targets[Index % Targets.Num()]) != nullptr);
+		const int32 ShotCount = FMath::Max(1, GetEffectiveProjectileCount());
+		FireStaggeredVolley(Target, ShotCount - 1);
 	}
 
-	return bFiredAny;
+	return bFiredFirst;
+}
+
+void UStarterWeaponComponent::FireStaggeredVolley(AActor* Target, int32 ExtraShots)
+{
+	if (ExtraShots <= 0 || !IsValid(Target))
+	{
+		return;
+	}
+
+	if (ProjectileStaggerSeconds <= 0.0f)
+	{
+		// No stagger: the rest of the burst fires in this same frame.
+		for (int32 Index = 0; Index < ExtraShots; ++Index)
+		{
+			FireAt(Target);
+		}
+		return;
+	}
+
+	PendingStaggerTarget = Target;
+	PendingStaggeredShots = ExtraShots;
+
+	if (UWorld* World = GetWorld())
+	{
+		// Replaces any volley still running from an earlier, shorter FireInterval, rather than
+		// overlapping two bursts' timers.
+		World->GetTimerManager().SetTimer(StaggerTimerHandle, this, &UStarterWeaponComponent::HandleStaggerTimer, ProjectileStaggerSeconds, true);
+	}
+}
+
+void UStarterWeaponComponent::HandleStaggerTimer()
+{
+	// Skipped, not redirected to a different enemy, if the target died or was removed mid-burst:
+	// FireAt already refuses an invalid target and simply returns null.
+	FireAt(PendingStaggerTarget.Get());
+
+	if (--PendingStaggeredShots <= 0)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(StaggerTimerHandle);
+		}
+	}
 }
 
 float UStarterWeaponComponent::GetEffectiveDamage() const

@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CombatEventsSubsystem.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "ContactDamageComponent.h"
 #include "EnemyBase.h"
@@ -276,6 +277,52 @@ bool FEnemyBaseDeathDuringEmergenceTest::RunTest(const FString& Parameters)
     // Emerging a dead enemy does nothing.
     Slime->BeginEmergence();
     TestFalse(TEXT("A dead enemy cannot start emerging"), Slime->IsEmerging());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FEnemyBaseTraversalLimitsTest,
+    "GrantMoney.Combat.EnemyBase.TraversalLimitsApplyToMovement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FEnemyBaseTraversalLimitsTest::RunTest(const FString& Parameters)
+{
+    // SCRUM-29: MaxStepHeight/MaxWalkableFloorAngle must reach the real movement component (not just sit
+    // unused on the enemy), and climbing onto another character's capsule must be turned back on, since
+    // ACharacter's own constructor turns it off by default.
+    FTestWorldWrapper WorldWrapper;
+    if (!WorldWrapper.CreateTestWorld(EWorldType::Game) || !WorldWrapper.BeginPlayInTestWorld())
+    {
+        WorldWrapper.ForwardErrorMessages(this);
+        return false;
+    }
+
+    UWorld* World = WorldWrapper.GetTestWorld();
+    AChaseTestEnemy* Chaser = World->SpawnActor<AChaseTestEnemy>();
+    if (!TestNotNull(TEXT("Chaser spawned"), Chaser))
+    {
+        return false;
+    }
+
+    TestTrue(TEXT("Another enemy's capsule can be stepped up onto (the engine default is No)"),
+        Chaser->GetCapsuleComponent()->CanCharacterStepUpOn == ECB_Yes);
+
+    // Non-default values, so this cannot pass by coincidentally matching the engine's own defaults.
+    Chaser->MaxStepHeight = 123.0f;
+    Chaser->MaxWalkableFloorAngle = 61.0f;
+
+    AActor* Target = World->SpawnActor<AActor>();
+    USceneComponent* TargetRoot = NewObject<USceneComponent>(Target, TEXT("Root"));
+    Target->SetRootComponent(TargetRoot);
+    TargetRoot->RegisterComponent();
+    TargetRoot->SetWorldLocation(FVector(500.0, 0.0, 0.0));
+    Chaser->ChaseTarget = Target;
+
+    Chaser->Tick(0.1f);
+
+    const UCharacterMovementComponent* Movement = Chaser->GetCharacterMovement();
+    TestEqual(TEXT("MaxStepHeight reaches the movement component"), Movement->MaxStepHeight, 123.0f);
+    TestEqual(TEXT("MaxWalkableFloorAngle reaches the movement component"), Movement->GetWalkableFloorAngle(), 61.0f, 0.01f);
     return true;
 }
 
