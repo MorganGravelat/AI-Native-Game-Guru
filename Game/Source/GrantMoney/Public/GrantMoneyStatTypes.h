@@ -26,8 +26,18 @@ enum class EGrantMoneyStat : uint8
 	// Extra targets one attack can pass through: 0 = stops at the first target, 2 = hits up to 3. Rounded down.
 	Penetration UMETA(DisplayName = "Penetration"),
 
-	// Running XP total, kept as the stat's base value. Pickups add to it; leveling will read it later.
+	// Running XP total, kept as the stat's base value. Pickups add to it; ULevelComponent reads it.
 	Experience UMETA(DisplayName = "Experience"),
+
+	// Extra magic orbs fired per firing cycle, on top of the first. Rounded down. See UStarterWeaponComponent.
+	ProjectileCount UMETA(DisplayName = "Projectile Count"),
+
+	// Radius (cm) of the area-of-effect burst a magic orb leaves behind when it is used up or expires.
+	// 0 (the default, no stat set) means no explosion at all. See AMagicOrbProjectile.
+	ExplosionRadius UMETA(DisplayName = "Explosion Radius"),
+
+	// The character's top movement speed (UCharacterMovementComponent::MaxWalkSpeed), in cm/s.
+	MoveSpeed UMETA(DisplayName = "Move Speed"),
 };
 
 /**

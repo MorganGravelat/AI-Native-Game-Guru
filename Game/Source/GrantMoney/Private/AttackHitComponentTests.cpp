@@ -224,4 +224,43 @@ bool FAttackHitUsesStatsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FAttackHitTryAreaHitTest,
+    "GrantMoney.Combat.AttackHitComponent.TryAreaHit",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FAttackHitTryAreaHitTest::RunTest(const FString& Parameters)
+{
+    AttackTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    // With no penetration (the default), a direct hit alone would exhaust the attack at once.
+    TestTrue(TEXT("A direct hit lands"), Scene.AttackHit->TryHit(Scene.Targets[0]) == EGrantMoneyHitResult::Hit);
+    TestTrue(TEXT("Exhausted after the one allowed direct hit"), Scene.AttackHit->IsExhausted());
+
+    // An area hit is not limited by that exhaustion: it still reaches the other two targets.
+    TestTrue(TEXT("Area hit 1 lands despite exhaustion"), Scene.AttackHit->TryAreaHit(Scene.Targets[1]));
+    TestTrue(TEXT("Area hit 2 lands despite exhaustion"), Scene.AttackHit->TryAreaHit(Scene.Targets[2]));
+    TestEqual(TEXT("All three targets took damage"), Scene.Listener->AttackHitCount, 3);
+
+    for (AActor* Target : Scene.Targets)
+    {
+        TestEqual(*FString::Printf(TEXT("%s took the fallback damage"), *Target->GetName()), AttackTest::FScene::HealthOf(Target), 90.0f);
+    }
+
+    // Never hits the same target twice, whether the repeat comes through TryHit or TryAreaHit.
+    TestFalse(TEXT("TryAreaHit does not re-hit a target the area already hit"), Scene.AttackHit->TryAreaHit(Scene.Targets[1]));
+    TestEqual(TEXT("No extra damage from the repeat"), AttackTest::FScene::HealthOf(Scene.Targets[1]), 90.0f);
+    TestTrue(TEXT("TryHit on a target the area already hit reports AlreadyHit"), Scene.AttackHit->TryHit(Scene.Targets[0]) == EGrantMoneyHitResult::AlreadyHit);
+
+    // Never hits an invalid target (the owner, or something with no health), area or not.
+    TestFalse(TEXT("TryAreaHit refuses its own owner"), Scene.AttackHit->TryAreaHit(Scene.Attack));
+    AActor* NoHealth = Scene.World()->SpawnActor<AActor>();
+    TestFalse(TEXT("TryAreaHit refuses a target with no health"), Scene.AttackHit->TryAreaHit(NoHealth));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

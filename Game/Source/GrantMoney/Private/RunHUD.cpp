@@ -1,7 +1,8 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-// NO-TEST: canvas drawing only. The values it shows are tested on ARunController (clock, state label)
-// and AEnemySpawner (active enemy count, current cap); the layout is checked by eye in PIE.
+// NO-TEST: canvas drawing only. The values it shows are tested on ARunController (clock, state label),
+// ULevelComponent (level, XP progress) and AEnemySpawner (active enemy count, current cap); the layout
+// is checked by eye in PIE.
 
 #include "RunHUD.h"
 
@@ -10,6 +11,9 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "EnemySpawner.h"
+#include "GrantMoneyPlayerCharacter.h"
+#include "Kismet/GameplayStatics.h"
+#include "LevelComponent.h"
 #include "RunController.h"
 
 namespace
@@ -71,6 +75,15 @@ void ARunHUD::DrawHUD()
 		StateLine += TEXT(" (paused)");
 	}
 	Y += DrawCentredLine(StateLine, Y, 1.2f, ColorForState(State));
+
+	// Level and XP progress (SCRUM-36), exposed to the HUD as required.
+	if (const AGrantMoneyPlayerCharacter* PlayerCharacter = Cast<AGrantMoneyPlayerCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		if (const ULevelComponent* Level = PlayerCharacter->GetLevelComponent())
+		{
+			Y += DrawCentredLine(FString::Printf(TEXT("Level %d  (%.0f / %.0f XP)"), Level->GetLevel(), Level->GetXpIntoLevel(), Level->GetXpToNextLevel()), Y, 1.0f, FLinearColor::White);
+		}
+	}
 
 	// Enough to watch the cap and replacement while testing.
 	for (TActorIterator<AEnemySpawner> It(GetWorld()); It; ++It)

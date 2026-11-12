@@ -4,15 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "GrantMoneyStatTypes.h"
 #include "GrantMoneyPlayerCharacter.generated.h"
 
 class UAnimationAsset;
 class UInputAction;
 class UGrantMoneyCharacterVisualData;
 class UHealthComponent;
+class ULevelComponent;
 class UPickupComponent;
 class UStarterWeaponComponent;
 class UStatsComponent;
+class UUpgradeComponent;
 struct FInputActionValue;
 
 /**
@@ -23,9 +26,14 @@ struct FInputActionValue;
  * can override the mesh, animation and placement without recompiling. Health
  * comes from a UHealthComponent backed by a UStatsComponent. It starts every run
  * with a UStarterWeaponComponent that fires at nearby enemies by itself, and a UPickupComponent that
- * draws in nearby pickups such as XP orbs. XP is the Experience stat. The view comes from
+ * draws in nearby pickups such as XP orbs. XP is the Experience stat, turned into a level and upgrade
+ * choices by ULevelComponent and UUpgradeComponent (SCRUM-36): see HandleLevelGained,
+ * HandleUpgradeChoiceReady and HandleUpgradeChoicesResolved, which route those events to the local
+ * AMapCameraPlayerController to pause the game and show the choice. The view comes from
  * the map camera, not this class. Reaching zero health ends the run as a loss (SCRUM-44): see
- * HandleHealthDepleted, which asks the level's ARunController to transition to Lost.
+ * HandleHealthDepleted, which asks the level's ARunController to transition to Lost. The MoveSpeed stat
+ * drives GetCharacterMovement()->MaxWalkSpeed directly (see HandleStatChanged), since the movement
+ * component reads its own property every tick rather than asking Stats for it.
  */
 UCLASS()
 class GRANTMONEY_API AGrantMoneyPlayerCharacter : public ACharacter
@@ -42,6 +50,8 @@ public:
 	UHealthComponent* GetHealth() const { return Health; }
 	UStarterWeaponComponent* GetStarterWeapon() const { return StarterWeapon; }
 	UPickupComponent* GetPickups() const { return Pickups; }
+	ULevelComponent* GetLevelComponent() const { return LevelComponent; }
+	UUpgradeComponent* GetUpgradeComponent() const { return UpgradeComponent; }
 	// Running XP total (the Experience stat). Orbs add to it when they arrive.
 	float GetExperience() const;
 protected:
@@ -60,6 +70,14 @@ protected:
 	// Detects pickups within its radius and draws them in. Tune the radius on it.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
 	TObjectPtr<UPickupComponent> Pickups;
+
+	// Turns the Experience stat into a level and progress toward the next one (SCRUM-36).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Progression")
+	TObjectPtr<ULevelComponent> LevelComponent;
+
+	// Queues level-ups into upgrade choices and applies the one picked (SCRUM-36).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Progression")
+	TObjectPtr<UUpgradeComponent> UpgradeComponent;
 
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;
@@ -97,6 +115,25 @@ private:
 	// (for example a test world with no run set up) or the run cannot be lost from its current state.
 	UFUNCTION()
 	void HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser);
+
+	// Bound to LevelComponent->OnLevelUp. Forwards to UpgradeComponent->NotifyLevelGained.
+	UFUNCTION()
+	void HandleLevelGained(int32 NewLevel, int32 PreviousLevel);
+
+	// Bound to UpgradeComponent->OnChoiceReady. Tells the local player controller to pause and show (or
+	// refresh, if already showing) the level-up choice screen.
+	UFUNCTION()
+	void HandleUpgradeChoiceReady();
+
+	// Bound to UpgradeComponent->OnChoicesResolved. Tells the local player controller to hide the
+	// choice screen and unpause.
+	UFUNCTION()
+	void HandleUpgradeChoicesResolved();
+
+	// Bound to Stats->OnStatChanged. Keeps GetCharacterMovement()->MaxWalkSpeed in sync with the
+	// MoveSpeed stat, so a Move Speed upgrade (or any other MoveSpeed modifier) takes effect immediately.
+	UFUNCTION()
+	void HandleStatChanged(EGrantMoneyStat Stat, float OldValue, float NewValue);
 
 	// The animation currently playing from the built-in idle/jog logic.
 	UPROPERTY(Transient)

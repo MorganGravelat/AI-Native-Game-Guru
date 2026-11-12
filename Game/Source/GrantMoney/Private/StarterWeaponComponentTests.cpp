@@ -394,4 +394,102 @@ bool FStarterWeaponPenetrationHitsUpToThreeTest::RunTest(const FString& Paramete
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStarterWeaponProjectileCountTest,
+    "GrantMoney.Weapons.StarterWeapon.ProjectileCountFiresAtDistinctTargets",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStarterWeaponProjectileCountTest::RunTest(const FString& Parameters)
+{
+    WeaponTest::FScene Scene;
+    if (!Scene.Create(*this, StarterWeaponStatTest::NoTimerShots))
+    {
+        return false;
+    }
+
+    UStatsComponent* Stats = NewObject<UStatsComponent>(Scene.Shooter);
+    Stats->RegisterComponent();
+
+    // Spread around the shooter rather than placed in a line, so each orb's straight-line path
+    // reaches its own target instead of being blocked by a nearer one standing in front of it.
+    ASlimeEnemy* Near = Scene.SpawnSlime(FVector(200.0, 0.0, 0.0));
+    ASlimeEnemy* Middle = Scene.SpawnSlime(FVector(0.0, 400.0, 0.0));
+    ASlimeEnemy* Far = Scene.SpawnSlime(FVector(-400.0, -400.0, 0.0));
+    TestEqual(TEXT("Default projectile count is 1"), Scene.Weapon->GetEffectiveProjectileCount(), 1);
+    TestTrue(TEXT("TryFire fires once"), Scene.Weapon->TryFire());
+    TestEqual(TEXT("Exactly one orb"), Scene.CountOrbs(), 1);
+    Scene.Step(2.0f);
+    TestEqual(TEXT("Only the nearest slime was hit"), WeaponTest::HealthOf(Near), 20.0f);
+    TestEqual(TEXT("The middle slime is untouched"), WeaponTest::HealthOf(Middle), 30.0f);
+    TestEqual(TEXT("The far slime is untouched"), WeaponTest::HealthOf(Far), 30.0f);
+
+    // Two Projectile Count upgrades: three orbs, one at each of the three nearest distinct slimes.
+    Stats->AddModifier(EGrantMoneyStat::ProjectileCount, EGrantMoneyStatModifierOp::Additive, 2.0f);
+    TestEqual(TEXT("Effective projectile count is 3"), Scene.Weapon->GetEffectiveProjectileCount(), 3);
+    TestTrue(TEXT("TryFire fires"), Scene.Weapon->TryFire());
+    TestEqual(TEXT("Three orbs fired (the first shot's orb already hit and was destroyed)"), Scene.CountOrbs(), 3);
+    Scene.Step(2.0f);
+    TestEqual(TEXT("Near hit again"), WeaponTest::HealthOf(Near), 10.0f);
+    TestEqual(TEXT("Middle now hit"), WeaponTest::HealthOf(Middle), 20.0f);
+    TestEqual(TEXT("Far now hit"), WeaponTest::HealthOf(Far), 20.0f);
+
+    // Fewer enemies in range than orbs: the extra orbs re-target the enemies that exist, not skipped.
+    WeaponTest::FScene Lonely;
+    if (!Lonely.Create(*this, StarterWeaponStatTest::NoTimerShots))
+    {
+        return false;
+    }
+    UStatsComponent* LonelyStats = NewObject<UStatsComponent>(Lonely.Shooter);
+    LonelyStats->RegisterComponent();
+    LonelyStats->AddModifier(EGrantMoneyStat::ProjectileCount, EGrantMoneyStatModifierOp::Additive, 2.0f);
+    ASlimeEnemy* OnlySlime = Lonely.SpawnSlime(FVector(200.0, 0.0, 0.0));
+    TestTrue(TEXT("Fires with only one enemy in range"), Lonely.Weapon->TryFire());
+    TestEqual(TEXT("Three orbs still fired"), Lonely.CountOrbs(), 3);
+    Lonely.Step(2.0f);
+    TestEqual(TEXT("All three hit the one slime available"), WeaponTest::HealthOf(OnlySlime), 0.0f);
+
+    // No enemies at all: the whole cycle is skipped, same as today with one orb.
+    WeaponTest::FScene Empty;
+    if (!Empty.Create(*this, StarterWeaponStatTest::NoTimerShots))
+    {
+        return false;
+    }
+    NewObject<UStatsComponent>(Empty.Shooter)->RegisterComponent();
+    TestFalse(TEXT("Nothing to fire at"), Empty.Weapon->TryFire());
+    TestEqual(TEXT("No orbs"), Empty.CountOrbs(), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStarterWeaponExplosionRadiusWiringTest,
+    "GrantMoney.Weapons.StarterWeapon.ExplosionRadiusWiring",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStarterWeaponExplosionRadiusWiringTest::RunTest(const FString& Parameters)
+{
+    WeaponTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("No upgrade: no explosion"), Scene.Weapon->GetEffectiveExplosionRadius(), 0.0f);
+
+    UStatsComponent* Stats = NewObject<UStatsComponent>(Scene.Shooter);
+    Stats->RegisterComponent();
+    Stats->AddModifier(EGrantMoneyStat::ExplosionRadius, EGrantMoneyStatModifierOp::Additive, 60.0f);
+    TestEqual(TEXT("One upgrade: 60 cm"), Scene.Weapon->GetEffectiveExplosionRadius(), 60.0f);
+
+    Stats->AddModifier(EGrantMoneyStat::ExplosionRadius, EGrantMoneyStatModifierOp::Additive, 60.0f);
+    TestEqual(TEXT("Two upgrades stack: 120 cm"), Scene.Weapon->GetEffectiveExplosionRadius(), 120.0f);
+
+    ASlimeEnemy* Slime = Scene.SpawnSlime(FVector(400.0, 0.0, 0.0));
+    AMagicOrbProjectile* Orb = Scene.Weapon->FireAt(Slime);
+    if (TestNotNull(TEXT("An orb is fired"), Orb))
+    {
+        TestEqual(TEXT("The orb carries the effective explosion radius"), Orb->GetExplosionRadius(), 120.0f);
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

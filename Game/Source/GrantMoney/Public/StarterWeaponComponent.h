@@ -26,7 +26,13 @@ class AMagicOrbProjectile;
  * UStatsComponent, its Damage, AttackInterval and Penetration modifiers (for example permanent
  * stat boost pickups) are applied on top of them; see the GetEffective* functions. If the owner's
  * stats hold a base value for one of those stats, that base replaces the weapon's own value,
- * the same rule UAttackHitComponent and UContactDamageComponent use.
+ * the same rule UAttackHitComponent and UContactDamageComponent use. ProjectileCount and
+ * ExplosionRadius (SCRUM-36 upgrades) follow the exact same rule.
+ *
+ * With ProjectileCount above 1, TryFire fires that many orbs in the same cycle, one each at up to that
+ * many distinct living enemies in range (nearest first); with fewer enemies in range than orbs, the
+ * extra orbs re-target the same enemies rather than being skipped. With ExplosionRadius above 0, every
+ * orb also bursts once it is used up or expires (see AMagicOrbProjectile).
  */
 UCLASS(ClassGroup = (Combat), meta = (BlueprintSpawnableComponent))
 class GRANTMONEY_API UStarterWeaponComponent : public UActorComponent
@@ -41,12 +47,17 @@ public:
 	// Enemies that are dead (even if still in the world) or still emerging from the ground are never chosen.
 	virtual AActor* SelectTarget() const;
 
+	// Up to Count distinct living enemies within TargetRange, nearest first (same rule as SelectTarget).
+	// Fewer than Count if fewer are in range; empty if none are. Count below 1 is treated as 1.
+	virtual TArray<AActor*> SelectTargets(int32 Count) const;
+
 	// Spawns one orb at the owner, aimed at Target's collision center, with the weapon's damage,
 	// speed and lifetime. Returns the orb, or null if it could not be fired.
 	virtual AMagicOrbProjectile* FireAt(AActor* Target);
 
-	// One firing interval: selects a target and fires at it, or skips the shot if there is none.
-	// Returns true if an orb was fired.
+	// One firing interval: selects up to GetEffectiveProjectileCount() targets and fires one orb at
+	// each (reusing targets if there are fewer enemies in range than orbs), or skips the whole cycle if
+	// nothing is in range at all. Returns true if at least one orb was fired.
 	bool TryFire();
 
 	// Damage per orb after the owner's Damage stat modifiers.
@@ -62,6 +73,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	int32 GetEffectivePenetration() const;
 
+	// Orbs fired per cycle after the owner's ProjectileCount stat modifiers, rounded down. Never below 1.
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	int32 GetEffectiveProjectileCount() const;
+
+	// Burst radius (cm) each orb leaves behind after the owner's ExplosionRadius stat modifiers.
+	// 0 (the default, no upgrade taken) means no burst at all. Never negative.
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	float GetEffectiveExplosionRadius() const;
+
 	// Damage per orb, applied through the existing health system.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0"))
 	float Damage = 10.0f;
@@ -73,6 +93,14 @@ public:
 	// Extra enemies each orb can pass through before it is used up. 0 = only the first enemy is hit.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0"))
 	int32 Penetration = 0;
+
+	// Orbs fired per cycle. 1 (the default) is today's single-orb behavior.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "1"))
+	int32 ProjectileCount = 1;
+
+	// Burst radius (cm) each orb leaves behind when it is used up or expires. 0 (the default) means no burst.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0", Units = "cm"))
+	float ExplosionRadius = 0.0f;
 
 	// Largest ground-plane distance, owner center to enemy center, at which an enemy can be targeted.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.0", Units = "cm"))

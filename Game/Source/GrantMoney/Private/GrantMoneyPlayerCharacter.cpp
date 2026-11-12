@@ -19,12 +19,15 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h"
+#include "LevelComponent.h"
+#include "MapCameraPlayerController.h"
 #include "Math/RotationMatrix.h"
 #include "PickupComponent.h"
 #include "RunController.h"
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UpgradeComponent.h"
 
 namespace
 {
@@ -96,12 +99,21 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	// Max-health stat boosts raise only the player's maximum; they do not heal (SCRUM-53).
 	Health->bHealOnMaxHealthGain = false;
 
+	// MoveSpeed starts at whatever MaxWalkSpeed the movement component already defaults to, so this
+	// does not hardcode (or need to match) the engine's own default; a Move Speed upgrade (SCRUM-36)
+	// then raises it via the usual stat modifier path (see HandleStatChanged).
+	Stats->SetBaseStat(EGrantMoneyStat::MoveSpeed, GetCharacterMovement()->MaxWalkSpeed);
+
 	// The player starts every run armed. The weapon starts firing when play begins.
 	StarterWeapon = CreateDefaultSubobject<UStarterWeaponComponent>(TEXT("StarterWeapon"));
 
 	// XP starts at zero every run and only grows. Orbs add to it through the stat's base value.
 	Stats->SetBaseStat(EGrantMoneyStat::Experience, 0.0f);
 	Pickups = CreateDefaultSubobject<UPickupComponent>(TEXT("Pickups"));
+
+	// Turns Experience into a level, and that level into upgrade choices (SCRUM-36).
+	LevelComponent = CreateDefaultSubobject<ULevelComponent>(TEXT("LevelComponent"));
+	UpgradeComponent = CreateDefaultSubobject<UUpgradeComponent>(TEXT("UpgradeComponent"));
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionFinder(TEXT("/Game/Input/IA_CameraMove.IA_CameraMove"));
 
@@ -166,6 +178,14 @@ void AGrantMoneyPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	Health->OnDeath.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleHealthDepleted);
+	LevelComponent->OnLevelUp.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleLevelGained);
+	UpgradeComponent->OnChoiceReady.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleUpgradeChoiceReady);
+	UpgradeComponent->OnChoicesResolved.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleUpgradeChoicesResolved);
+	Stats->OnStatChanged.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleStatChanged);
+
+	// In case a Blueprint default or save data set MoveSpeed to something other than what the
+	// constructor read from the movement component.
+	GetCharacterMovement()->MaxWalkSpeed = Stats->GetStat(EGrantMoneyStat::MoveSpeed);
 
 	ApplyVisualData();
 
@@ -190,6 +210,35 @@ void AGrantMoneyPlayerCharacter::HandleHealthDepleted(UHealthComponent* Depleted
 		// No-op (returns false) if the run is already over or was never started; a state can be lost only
 		// once, and GrantMoneyGameMode::HandleRunStateChanged reacts to that single transition.
 		Run->RequestLoss();
+	}
+}
+
+void AGrantMoneyPlayerCharacter::HandleLevelGained(int32 NewLevel, int32 PreviousLevel)
+{
+	UpgradeComponent->NotifyLevelGained();
+}
+
+void AGrantMoneyPlayerCharacter::HandleUpgradeChoiceReady()
+{
+	if (AMapCameraPlayerController* PC = Cast<AMapCameraPlayerController>(GetController()))
+	{
+		PC->ShowLevelUpChoice(UpgradeComponent);
+	}
+}
+
+void AGrantMoneyPlayerCharacter::HandleUpgradeChoicesResolved()
+{
+	if (AMapCameraPlayerController* PC = Cast<AMapCameraPlayerController>(GetController()))
+	{
+		PC->HideLevelUpChoice();
+	}
+}
+
+void AGrantMoneyPlayerCharacter::HandleStatChanged(EGrantMoneyStat Stat, float OldValue, float NewValue)
+{
+	if (Stat == EGrantMoneyStat::MoveSpeed)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = NewValue;
 	}
 }
 
