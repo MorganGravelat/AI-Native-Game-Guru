@@ -9,7 +9,7 @@ This guide covers SCRUM-53: enemies can now drop rare **permanent stat boosts**.
 - **Part D:** video voice-over script
 - **Media Capture List:** every screenshot and clip to record, with file names
 
-**Status:** the code, tests and this document are written. **It has not been compiled and no Automation test has been run yet**: the AI session that wrote it had no Unreal Engine available (see Part C). Run `python scripts/run_tests.py` with the Editor closed before anything else. The manual PIE checks in [B9](#9-verification) have not been performed. No media has been captured.
+**Status:** the code, tests and this document are written and reviewed. **The developer compiled the project and ran the Automation tests in Unreal Engine; all passed** (developer reported, 2026-11-11). The AI session that wrote the code had no Unreal Engine available, so the build and test run were done by the developer (see Part C). The manual PIE checks in [B9](#9-verification) have not been recorded yet. No media has been captured.
 
 **What is and is not evidence in this document:**
 
@@ -20,7 +20,7 @@ This guide covers SCRUM-53: enemies can now drop rare **permanent stat boosts**.
 | Automation test | A `GrantMoney.*` Automation test passed in a headless editor run, in a synthetic empty world. |
 | Developer reported | The developer played it in the Editor and said what they saw. |
 
-At the time of writing, **only "Read from source" applies**.
+At the time of writing, **"Read from source" and "Developer reported" apply**: the developer reported a successful build and all Automation tests passing. No PIE results have been recorded yet.
 
 ---
 
@@ -35,17 +35,17 @@ At the time of writing, **only "Read from source" applies**.
 | Criterion | Met by | Evidence |
 |---|---|---|
 | Reusable, modular C++ stat boost that hooks into the existing drop and pickup pipeline | `AStatBoostPickup : APickupBase`, overriding only `OnCollected` | Read from source; tests written |
-| Instant consumption, no inventory | `APickupBase::TryCollect` runs `OnCollected` once and destroys the pickup | Test `StatBoost.AppliesOnceOnArrival` (not yet run) |
+| Instant consumption, no inventory | `APickupBase::TryCollect` runs `OnCollected` once and destroys the pickup | Test `StatBoost.AppliesOnceOnArrival` (passed, developer reported) |
 | Stat type enum | Existing `EGrantMoneyStat` (no new enum) | Read from source |
-| Flat vs percent | Existing `EGrantMoneyStatModifierOp` (`Additive` / `Multiplicative`), exposed as **Modifier Type** | Test `StatBoost.FlatAndPercentStack` (not yet run) |
+| Flat vs percent | Existing `EGrantMoneyStatModifierOp` (`Additive` / `Multiplicative`), exposed as **Modifier Type** | Test `StatBoost.FlatAndPercentStack` (passed, developer reported) |
 | Permanent duration | The modifier handle is never kept, so nothing removes it during the run | Read from source |
-| Health boost raises only max health | New `UHealthComponent::bHealOnMaxHealthGain`, set to false on the player | Tests `StatBoost.MaxHealthRaisesOnlyTheMaximum`, `HealthComponent.MaxHealthGainWithoutHeal` (not yet run) |
-| Penetration N lets an orb hit N + 1 enemies | Existing `UAttackHitComponent` rule; the weapon now passes the boosted value to each orb | Test `StarterWeapon.PenetrationTwoHitsThreeSlimes` (not yet run) |
-| Damage / attack speed boosts change the shots | `UStarterWeaponComponent::GetEffectiveDamage` / `GetEffectiveFireInterval` | Test `StarterWeapon.OwnerStatBoostsApply` (not yet run) |
+| Health boost raises only max health | New `UHealthComponent::bHealOnMaxHealthGain`, set to false on the player | Tests `StatBoost.MaxHealthRaisesOnlyTheMaximum`, `HealthComponent.MaxHealthGainWithoutHeal` (passed, developer reported) |
+| Penetration N lets an orb hit N + 1 enemies | Existing `UAttackHitComponent` rule; the weapon now passes the boosted value to each orb | Test `StarterWeapon.PenetrationTwoHitsThreeSlimes` (passed, developer reported) |
+| Damage / attack speed boosts change the shots | `UStarterWeaponComponent::GetEffectiveDamage` / `GetEffectiveFireInterval` | Test `StarterWeapon.OwnerStatBoostsApply` (passed, developer reported) |
 | Sound on pickup | `AStatBoostPickup::PickupSound` (+ volume) | Read from source; PIE pending |
-| 2D image that always faces the player | `AStatBoostPickup::Icon` on a `UMaterialBillboardComponent` | Test `StatBoost.IconReplacesSphere` (not yet run); look is PIE pending |
-| Rare, editable drop chance | Four entries in `ASlimeEnemy::BonusPickupDrops` at `DefaultStatBoostDropChance` (1% each) | Test `EnemyDrops.SlimeDropsRareStatBoosts` (not yet run) |
-| Unit tests per `CLAUDE.md` | `StatBoostPickupTests.cpp` plus updated tests for each changed class | Written; not yet run |
+| 2D image that always faces the player | `AStatBoostPickup::Icon` on a `UMaterialBillboardComponent` | Test `StatBoost.IconReplacesSphere` (passed, developer reported); look is PIE pending |
+| Rare, editable drop chance | Four entries in `ASlimeEnemy::BonusPickupDrops` at `DefaultStatBoostDropChance` (1% each) | Test `EnemyDrops.SlimeDropsRareStatBoosts` (passed, developer reported) |
+| Unit tests per `CLAUDE.md` | `StatBoostPickupTests.cpp` plus updated tests for each changed class | Passed (developer reported) |
 
 **Related tickets:** SCRUM-33 (stats, health, death), SCRUM-32 (starter weapon, magic orb), SCRUM-35 (pickup system and `BonusPickupDrops`).
 
@@ -230,13 +230,30 @@ A list of the existing classes that already cover part of the ticket, the gaps, 
 - **Symptom (avoided):** `EnemyDrops.SlimeDropsExactlyOneOrb` counts every pickup, and slimes now have rare random drops.
 - **Fix:** the test clears `BonusPickupDrops` first. Rare drops are tested separately with chances forced to 1.
 
+### 8.6 Visual Studio build fails instantly with MSB4018
+- **Symptom:** `error MSB4018: The "SetEnv" task failed unexpectedly … Environment variable name or value is too long`, in under a second, with nothing compiled.
+- **Cause:** the Windows PATH is too long for Visual Studio's build step. Not related to the code.
+- **Fix:** build with Unreal's `Engine\Build\BatchFiles\Build.bat GrantMoneyEditor Win64 Development -Project=...` or `scripts/run_tests.py`, or shorten PATH (remove duplicates and dead folders) and restart Visual Studio.
+- *Real failure on the developer's machine during this ticket.*
+
+### 8.7 `python` opens the Microsoft Store message
+- **Symptom:** `Python was not found; run without arguments to install from the Microsoft Store…`
+- **Cause:** Python is not installed (or not on PATH) and Windows' app alias intercepts the command.
+- **Fix:** `py`, Unreal's bundled `Engine\Binaries\ThirdParty\Python3\Win64\python.exe`, or install Python with "Add to PATH" and turn off the App Installer aliases.
+- *Real failure on the developer's machine during this ticket.*
+
 ## 9. Verification
 
 ### Performed
-None in Unreal. The code was written and reviewed by reading only.
 
-### To run first (developer)
-`python scripts/run_tests.py` with the Editor closed. New or changed tests:
+| Test | Action | Result | Kind |
+|---|---|---|---|
+| Build | Developer compiled the `GrantMoneyEditor` target | Succeeded | Developer reported |
+| Automation tests | Developer ran the `GrantMoney.*` Automation tests in Unreal Engine | All passed | Developer reported |
+
+An early Visual Studio build attempt failed before compiling with `MSB4018 … Environment variable name or value is too long` (an over-long PATH on the machine, not the code). Building through Unreal's `Build.bat` / `run_tests.py` avoids it; see §8.6.
+
+**New or changed tests** (rerun with `python scripts/run_tests.py`, Editor closed):
 
 | Group | Tests |
 |---|---|
@@ -246,7 +263,7 @@ None in Unreal. The code was written and reviewed by reading only.
 | `Weapons.StarterWeapon` | OwnerStatBoostsApply, PenetrationTwoHitsThreeSlimes |
 | `Pickups.EnemyDrops` | SlimeDropsRareStatBoosts (new); SlimeDropsExactlyOneOrb (updated) |
 
-If anything fails, record the real error under §8 before fixing it.
+If anything fails on a later run, record the real error under §8 before fixing it.
 
 ### Pending (developer, in the Editor)
 
@@ -267,7 +284,7 @@ To see boosts quickly, set every slime `Bonus Pickup Drops` chance to 1.0 tempor
 
 ## 10. Known Limitations
 
-- **Not compiled or tested yet** (see Status).
+- **PIE behaviour not yet recorded.** Build and Automation tests passed (developer reported); the look, sound and feel in play are in the PIE table above.
 - **Contact damage boosts do nothing on the player.** The player has no `UContactDamageComponent`. `AContactDamageBoostPickup` exists but is not in the slime's list. Deciding whether the player deals contact damage is a design call.
 - **Attack speed and contact damage share the AttackInterval stat** on any actor that has both a weapon and a contact damage component.
 - **Boosts last for the current run only.** They are runtime modifiers on the player; nothing saves them across levels or sessions.
@@ -306,13 +323,14 @@ SCRUM-53: Add rare permanent stat boost drops
 
 # Part C – AI Workflow Log
 
-**Tool:** Claude, working on the repository through a folder linked from the developer's PC. It could read and write files but **could not run Unreal, UnrealBuildTool or `run_tests.py`**, so nothing was compiled or tested.
+**Tool:** Claude, working on the repository through a folder linked from the developer's PC. It could read and write files but **could not run Unreal, UnrealBuildTool or `run_tests.py`**. The developer built the project and ran the tests.
 
 | # | Purpose | Prompt (developer) | Result | Decision | Verification |
 |---|---|---|---|---|---|
 | 1 | Request | "Act as a Principal Unreal Engine C++ Developer. I need to extend my existing Item Drop system to support droppable Stat Boosts … Please ask any clarifying questions … before generating the full implementation." | Asked about where stats live, the pickup pipeline, multiplayer, engine/FX, stat maths and persistence. | Accepted | — |
 | 2 | Answers | Stats in a stats component; headers in Public; single-player; UE 5.8; sound per boost; 2D facing icons; editable chances and amounts; max-health only; penetration rule; permanent and rare; "Utilize what is already there … Follow claude.md". | Read `CLAUDE.md` and only the relevant headers. Found stats, modifiers, pickups and drops already cover most of it; found the weapon ignored stats and health healed on gain. | Accepted | Read from source |
-| 3 | Implementation | (continued) | Files in Part A. Caught 8.3 in its own diff review. | Pending developer review | Not compiled |
+| 3 | Implementation | (continued) | Files in Part A. Caught 8.3 in its own diff review. | Accepted | Developer: build succeeded, all Automation tests passed |
+| 5 | Build help | "Where do I run python scripts/run_tests.py?", the MSB4018 error | Explained 8.6 and 8.7 and the `Build.bat` route. | Accepted | Developer built and tested afterwards |
 | 4 | Documentation | (continued) | This document. | — | Checked against the diff |
 
 **Where AI helped most:** mapping requirements to existing classes before writing anything, which kept the change to one new class plus small edits.
@@ -379,7 +397,7 @@ Store under `Media/SCRUM-53/` (outside the repository). Only record what actuall
 | 03 | `03-weapon-effective-stats.png` | Screenshot | `StarterWeaponComponent.cpp` `GetEffective*` and `FireAt` | Boosts change the shots |
 | 04 | `04-stat-boost-pickup.png` | Screenshot | `StatBoostPickup.cpp` `ApplyBoost`, `OnCollected`, subclasses | The whole effect is one modifier |
 | 05 | `05-slime-bonus-drops.png` | Screenshot | Slime Details → `Bonus Pickup Drops`, four entries at 0.01 | Rare, editable chances |
-| 06 | `06-tests-pass.png` | Screenshot | `run_tests.py` / Automation with `GrantMoney.Pickups.StatBoost` expanded | Tests green (**only after they really pass**) |
+| 06 | `06-tests-pass.png` | Screenshot | `run_tests.py` / Automation with `GrantMoney.Pickups.StatBoost` expanded | Tests green |
 | 07 | `07-boost-drop.mp4` | Clip | Chances 1.0, kill a slime: four coloured spheres + XP orb | Drops work |
 | 08 | `08-max-health-no-heal.mp4` | Clip | Hurt player, collect red; Health shows max 110, current unchanged | Max-only rule |
 | 09 | `09-damage-boost.mp4` | Clip | Before/after hit on a slime (10 → 12) | Damage boost |
