@@ -11,9 +11,11 @@
 #include "InputMappingContext.h"
 #include "InputActionValue.h"
 #include "Kismet/GameplayStatics.h"
+#include "LevelUpWidget.h"
 #include "MapCameraPawn.h"
 #include "PauseMenuWidget.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UpgradeComponent.h"
 
 AMapCameraPlayerController::AMapCameraPlayerController()
 {
@@ -27,6 +29,7 @@ AMapCameraPlayerController::AMapCameraPlayerController()
 	static ConstructorHelpers::FObjectFinder<UInputAction> PauseActionFinder(TEXT("/Game/Input/IA_Pause.IA_Pause"));
 	static ConstructorHelpers::FClassFinder<UPauseMenuWidget> PauseMenuFinder(TEXT("/Game/UI/WBP_PauseMenu"));
 	static ConstructorHelpers::FClassFinder<UGameOverWidget> GameOverFinder(TEXT("/Game/UI/WBP_GameOver"));
+	static ConstructorHelpers::FClassFinder<ULevelUpWidget> LevelUpFinder(TEXT("/Game/UI/WBP_LevelUp"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> TurnActionFinder(TEXT("/Game/Input/IA_CameraTurn.IA_CameraTurn"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> LookUpActionFinder(TEXT("/Game/Input/IA_CameraLookUp.IA_CameraLookUp"));
 	static ConstructorHelpers::FObjectFinder<UInputAction> ZoomActionFinder(TEXT("/Game/Input/IA_CameraZoom.IA_CameraZoom"));
@@ -44,6 +47,11 @@ AMapCameraPlayerController::AMapCameraPlayerController()
 	if (GameOverFinder.Succeeded())
 	{
 		GameOverWidgetClass = GameOverFinder.Class;
+	}
+
+	if (LevelUpFinder.Succeeded())
+	{
+		LevelUpWidgetClass = LevelUpFinder.Class;
 	}
 
 	if (TurnActionFinder.Succeeded()) { CameraTurnAction = TurnActionFinder.Object; }
@@ -165,8 +173,9 @@ void AMapCameraPlayerController::HandleCameraZoom(const FInputActionValue& Value
 
 void AMapCameraPlayerController::TogglePauseMenu()
 {
-	// The run is over; nothing to pause for, and the Game Over screen owns the cursor and input mode now.
-	if (IsValid(GameOverWidget) && GameOverWidget->IsInViewport())
+	// The run is over, or a level-up choice is forcing a decision; nothing to pause for either way, and
+	// that other screen owns the cursor and input mode now.
+	if ((IsValid(GameOverWidget) && GameOverWidget->IsInViewport()) || (IsValid(LevelUpWidget) && LevelUpWidget->IsInViewport()))
 	{
 		return;
 	}
@@ -219,6 +228,64 @@ void AMapCameraPlayerController::ShowGameOver(float SurvivalSeconds, float Exper
 	InputMode.SetWidgetToFocus(GameOverWidget->TakeWidget());
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
+}
+
+void AMapCameraPlayerController::ShowLevelUpChoice(UUpgradeComponent* InUpgrades)
+{
+	if (!LevelUpWidgetClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("MapCameraPlayerController: WBP_LevelUp class is not set."));
+		return;
+	}
+
+	// A level-up choice forces a decision; a pause menu open over it would be confusing.
+	ClosePauseMenu();
+
+	if (!IsValid(LevelUpWidget))
+	{
+		LevelUpWidget = CreateWidget<ULevelUpWidget>(this, LevelUpWidgetClass);
+		if (LevelUpWidget)
+		{
+			LevelUpWidget->SetUpgradeComponent(InUpgrades);
+		}
+	}
+
+	if (!LevelUpWidget)
+	{
+		return;
+	}
+
+	// Each call (including the second, third, ... of several queued choices) re-reads the component's
+	// current options, since they can differ from one choice to the next.
+	LevelUpWidget->RefreshOptions();
+
+	if (!LevelUpWidget->IsInViewport())
+	{
+		LevelUpWidget->AddToViewport();
+	}
+
+	// Same mechanism as the pause menu and the Game Over screen: pausing also suspends combat, the run
+	// timer and any timer-driven temporary effect, since none of those tick or run timers while paused.
+	UGameplayStatics::SetGamePaused(this, true);
+	bShowMouseCursor = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetWidgetToFocus(LevelUpWidget->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+}
+
+void AMapCameraPlayerController::HideLevelUpChoice()
+{
+	UGameplayStatics::SetGamePaused(this, false);
+
+	if (IsValid(LevelUpWidget))
+	{
+		LevelUpWidget->RemoveFromParent();
+	}
+
+	bShowMouseCursor = false;
+	SetInputMode(FInputModeGameOnly());
 }
 
 void AMapCameraPlayerController::OpenPauseMenu()

@@ -39,7 +39,7 @@ int32 UAttackHitComponent::GetPenetration() const
 
 int32 UAttackHitComponent::GetRemainingHits() const
 {
-	return FMath::Max(0, 1 + GetPenetration() - HitActors.Num());
+	return FMath::Max(0, 1 + GetPenetration() - DirectHitCount);
 }
 
 bool UAttackHitComponent::HasHit(const AActor* Target) const
@@ -90,6 +90,7 @@ EGrantMoneyHitResult UAttackHitComponent::TryHit(AActor* Target)
 
 	// Record before applying damage: damage can kill and destroy the target, and a listener could call TryHit again.
 	HitActors.Add(Target);
+	++DirectHitCount;
 
 	AActor* Owner = GetOwner();
 	const float Damage = GetDamage();
@@ -108,4 +109,23 @@ EGrantMoneyHitResult UAttackHitComponent::TryHit(AActor* Target)
 void UAttackHitComponent::ResetHits()
 {
 	HitActors.Reset();
+	DirectHitCount = 0;
+}
+
+bool UAttackHitComponent::TryAreaHit(AActor* Target)
+{
+	if (!IsValidTarget(Target) || HasHit(Target))
+	{
+		return false;
+	}
+
+	// Recorded first for the same reason TryHit does: damage can destroy the target before this returns.
+	HitActors.Add(Target);
+
+	AActor* Owner = GetOwner();
+	const float Damage = GetDamage();
+	UGameplayStatics::ApplyDamage(Target, Damage, Owner->GetInstigatorController(), Owner, UDamageType::StaticClass());
+
+	OnTargetHit.Broadcast(Target, Damage);
+	return true;
 }

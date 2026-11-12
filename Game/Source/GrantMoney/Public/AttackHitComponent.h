@@ -61,6 +61,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	EGrantMoneyHitResult TryHit(AActor* Target);
 
+	// Damages Target once, the same as TryHit, but ignores IsExhausted(): penetration limits how many
+	// targets a flight-through hit reaches, not how many an area effect (e.g. an explosion) can reach,
+	// and it never counts toward that limit either, so it can never rob a penetrating hit of a target
+	// still ahead on its path. Still never hits the same target twice (TryHit and TryAreaHit share
+	// HitActors for that), never hits an invalid target, and still only ever damages each target once in
+	// total between the two. Returns true if damage was applied.
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	bool TryAreaHit(AActor* Target);
+
 	// True if TryHit(Target) would hit right now.
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool CanHit(const AActor* Target) const;
@@ -80,17 +89,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	int32 GetPenetration() const;
 
-	// Hits left before the attack is exhausted.
+	// Hits left before the attack is exhausted. Counts only TryHit successes (direct, piercing hits); an
+	// area hit from TryAreaHit never uses this up, so an explosion catching an enemy still ahead on a
+	// penetrating attack's path cannot rob it of a direct hit on that same enemy.
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	int32 GetRemainingHits() const;
 
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool IsExhausted() const { return GetRemainingHits() <= 0; }
 
+	// Every target hit so far, by either TryHit or TryAreaHit (both count here: this is about double-
+	// damage prevention, not the penetration budget — see GetRemainingHits for that).
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	int32 GetHitCount() const { return HitActors.Num(); }
 
-	// Forgets every target hit so far, e.g. for a pooled projectile or one that returns and may hit again.
+	// Forgets every target hit so far (and resets the penetration budget), e.g. for a pooled projectile
+	// or one that returns and may hit again.
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	void ResetHits();
 
@@ -117,6 +131,12 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStatsComponent> Stats;
 
-	// Targets already hit by this attack. Weak so a destroyed target never keeps anything alive.
+	// Targets already hit by this attack (by TryHit or TryAreaHit). Weak so a destroyed target never
+	// keeps anything alive. Used only to prevent double-damage; see DirectHitCount for the penetration budget.
 	TSet<TWeakObjectPtr<const AActor>> HitActors;
+
+	// How many TryHit successes this attack has landed. Separate from HitActors.Num() so an area hit
+	// (TryAreaHit) never counts toward penetration, even if it happens to catch a target still ahead on
+	// a piercing attack's path.
+	int32 DirectHitCount = 0;
 };

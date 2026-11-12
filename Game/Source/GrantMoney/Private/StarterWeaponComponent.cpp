@@ -115,6 +115,49 @@ AActor* UStarterWeaponComponent::SelectTarget() const
 	return Nearest;
 }
 
+TArray<AActor*> UStarterWeaponComponent::SelectTargets(int32 Count) const
+{
+	TArray<AActor*> Result;
+
+	const AActor* Owner = GetOwner();
+	const UWorld* World = GetWorld();
+	if (!Owner || !World)
+	{
+		return Result;
+	}
+
+	const int32 WantedCount = FMath::Max(1, Count);
+	const FVector OwnerLocation = Owner->GetActorLocation();
+	const double RangeSquared = FMath::Square(static_cast<double>(TargetRange));
+
+	// Collect every living, in-range enemy with its distance, then keep the nearest WantedCount.
+	TArray<TPair<double, AEnemyBase*>> InRange;
+	for (TActorIterator<AEnemyBase> It(World); It; ++It)
+	{
+		AEnemyBase* Enemy = *It;
+		if (!IsLivingEnemy(Enemy))
+		{
+			continue;
+		}
+
+		const double DistanceSquared = FVector::DistSquared2D(OwnerLocation, Enemy->GetActorLocation());
+		if (DistanceSquared <= RangeSquared)
+		{
+			InRange.Emplace(DistanceSquared, Enemy);
+		}
+	}
+
+	InRange.Sort([](const TPair<double, AEnemyBase*>& A, const TPair<double, AEnemyBase*>& B) { return A.Key < B.Key; });
+
+	Result.Reserve(FMath::Min(WantedCount, InRange.Num()));
+	for (int32 Index = 0; Index < InRange.Num() && Index < WantedCount; ++Index)
+	{
+		Result.Add(InRange[Index].Value);
+	}
+
+	return Result;
+}
+
 AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 {
 	AActor* Owner = GetOwner();
@@ -144,7 +187,7 @@ AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 		return nullptr;
 	}
 
-	Orb->Launch(Direction, ProjectileSpeed, GetEffectiveDamage(), ProjectileLifetime, GetEffectivePenetration());
+	Orb->Launch(Direction, ProjectileSpeed, GetEffectiveDamage(), ProjectileLifetime, GetEffectivePenetration(), GetEffectiveExplosionRadius());
 	Orb->FinishSpawning(SpawnTransform);
 
 	UE_LOG(LogTemp, Log, TEXT("StarterWeapon: %s fired an orb at %s."), *GetNameSafe(Owner), *GetNameSafe(Target));
@@ -153,13 +196,35 @@ AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 
 bool UStarterWeaponComponent::TryFire()
 {
-	AActor* Target = SelectTarget();
-	if (!Target)
+	const int32 ShotCount = FMath::Max(1, GetEffectiveProjectileCount());
+
+	// The common case (no Projectile Count upgrade taken) keeps using the original single-target path
+	// unchanged, so every existing single-target behaviour (including tie-breaking) stays identical.
+	if (ShotCount <= 1)
+	{
+		AActor* Target = SelectTarget();
+		if (!Target)
+		{
+			return false;
+		}
+
+		return FireAt(Target) != nullptr;
+	}
+
+	const TArray<AActor*> Targets = SelectTargets(ShotCount);
+	if (Targets.IsEmpty())
 	{
 		return false;
 	}
 
-	return FireAt(Target) != nullptr;
+	// Fewer enemies in range than orbs: the extra orbs re-target the nearest ones rather than being skipped.
+	bool bFiredAny = false;
+	for (int32 Index = 0; Index < ShotCount; ++Index)
+	{
+		bFiredAny |= (FireAt(Targets[Index % Targets.Num()]) != nullptr);
+	}
+
+	return bFiredAny;
 }
 
 float UStarterWeaponComponent::GetEffectiveDamage() const
@@ -180,4 +245,15 @@ int32 UStarterWeaponComponent::GetEffectivePenetration() const
 
 	// Rounded down, with a small tolerance so a sum like 0.1 * 10 still counts as a whole 1.
 	return FMath::Max(0, FMath::FloorToInt32(Value + UE_KINDA_SMALL_NUMBER));
+}
+
+int32 UStarterWeaponComponent::GetEffectiveProjectileCount() const
+{
+	const float Value = ApplyOwnerStats(GetOwner(), EGrantMoneyStat::ProjectileCount, static_cast<float>(ProjectileCount));
+	return FMath::Max(1, FMath::FloorToInt32(Value + UE_KINDA_SMALL_NUMBER));
+}
+
+float UStarterWeaponComponent::GetEffectiveExplosionRadius() const
+{
+	return FMath::Max(0.0f, ApplyOwnerStats(GetOwner(), EGrantMoneyStat::ExplosionRadius, ExplosionRadius));
 }

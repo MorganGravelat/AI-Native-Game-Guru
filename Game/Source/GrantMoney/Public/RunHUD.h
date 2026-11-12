@@ -10,10 +10,10 @@ class ARunController;
 
 /**
  * Minimal on-screen readout of the run, drawn straight onto the canvas so it needs no widget assets:
- * the countdown clock, the run state and the spawner's active-enemy count (against its current,
- * difficulty-ramped cap). There is no score line: the character's level is the run's progress readout
- * once it exists.
- * Temporary: the real HUD replaces it, reading the same ARunController / AEnemySpawner getters and events.
+ * the countdown clock, the run state, the player's level and XP progress (ULevelComponent, SCRUM-36)
+ * and the spawner's active-enemy count (against its current, difficulty-ramped cap). There is no score
+ * line: the character's level is the run's progress readout.
+ * Temporary: the real HUD replaces it, reading the same getters and events.
  * The game mode makes it the player's HUD class.
  */
 UCLASS()

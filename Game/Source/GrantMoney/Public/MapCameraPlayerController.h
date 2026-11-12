@@ -10,6 +10,8 @@ class UInputMappingContext;
 class UInputAction;
 class UPauseMenuWidget;
 class UGameOverWidget;
+class ULevelUpWidget;
+class UUpgradeComponent;
 class AMapCameraPawn;
 struct FInputActionValue;
 
@@ -49,6 +51,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "GameOver")
 	TSubclassOf<UGameOverWidget> GameOverWidgetClass;
 
+	// Defaults to /Game/UI/WBP_LevelUp.
+	UPROPERTY(EditAnywhere, Category = "LevelUp")
+	TSubclassOf<ULevelUpWidget> LevelUpWidgetClass;
+
 	// Camera actions forwarded to the view-target camera pawn.
 	// Default to /Game/Input/IA_CameraTurn, IA_CameraLookUp and IA_CameraZoom.
 	UPROPERTY(EditAnywhere, Category = "Camera|Input")
@@ -62,7 +68,8 @@ protected:
 
 public:
 	// Opens the pause menu if it is closed, closes it if it is open. Does nothing once the Game Over
-	// screen is showing (ShowGameOver): the run is already over, so there is nothing to pause for.
+	// screen is showing (ShowGameOver) or a level-up choice is active (ShowLevelUpChoice): there is
+	// nothing to pause for in either case.
 	void TogglePauseMenu();
 
 	// Closes the pause menu if it is open, shows the Game Over screen with SurvivalSeconds and
@@ -71,6 +78,17 @@ public:
 	// since none of those tick or run timers while the world is paused), and sets the cursor and input
 	// mode the same way the pause menu does. Safe to call more than once; later calls just refresh the text.
 	void ShowGameOver(float SurvivalSeconds, float Experience);
+
+	// Closes the pause menu if it is open, then shows (creating it the first time) the level-up choice
+	// screen for InUpgrades, refreshing it with InUpgrades->GetCurrentOptions(), and pauses the game —
+	// the same mechanism as ShowGameOver, which is how "suspend combat, the run timer and
+	// temporary-effect durations while choosing" is satisfied with no bespoke freeze logic. Safe to call
+	// again while already showing (for example the second of several queued choices): it just refreshes.
+	void ShowLevelUpChoice(UUpgradeComponent* InUpgrades);
+
+	// Hides the level-up choice screen (if showing) and unpauses. Called once the whole queue of
+	// pending choices has been answered (UUpgradeComponent::OnChoicesResolved).
+	void HideLevelUpChoice();
 
 private:
 	void OpenPauseMenu();
@@ -92,4 +110,8 @@ private:
 	// ways out are Restart (reloads the level) and Quit.
 	UPROPERTY(Transient)
 	TObjectPtr<UGameOverWidget> GameOverWidget;
+
+	// Created once and reused. Shown only while UUpgradeComponent has an active choice.
+	UPROPERTY(Transient)
+	TObjectPtr<ULevelUpWidget> LevelUpWidget;
 };
