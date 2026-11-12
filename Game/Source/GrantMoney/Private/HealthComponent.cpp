@@ -100,9 +100,10 @@ void UHealthComponent::HandleStatChanged(EGrantMoneyStat Stat, float OldValue, f
 		return;
 	}
 
-	// A max-health buff also heals by the amount gained, so picking up an upgrade
-	// never leaves the player "less full". A loss only clamps current health.
-	const float Gained = FMath::Max(0.0f, NewValue - OldValue);
+	// By default a max-health buff also heals by the amount gained, so picking up an upgrade
+	// never leaves the owner "less full". With bHealOnMaxHealthGain off, only the ceiling rises.
+	// A loss only clamps current health.
+	const float Gained = bHealOnMaxHealthGain ? FMath::Max(0.0f, NewValue - OldValue) : 0.0f;
 	SetHealth(CurrentHealth + Gained);
 
 	// A max-health loss can only kill if max health itself drops to zero.

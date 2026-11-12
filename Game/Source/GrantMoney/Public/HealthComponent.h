@@ -67,6 +67,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Health")
 	FOnGrantMoneyDeath OnDeath;
 
+	// When max health rises (e.g. a max-health stat boost), also heal by the amount gained.
+	// Off means a boost raises only the ceiling and current health stays where it was.
+	// A loss of max health always just clamps current health, whatever this is set to.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health")
+	bool bHealOnMaxHealthGain = true;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

@@ -9,11 +9,26 @@
 #include "GameFramework/Pawn.h"
 #include "HealthComponent.h"
 #include "MagicOrbProjectile.h"
+#include "StatsComponent.h"
 
 namespace
 {
 	// Matches the FireInterval property's minimum, so a bad value cannot create a timer that fires every frame.
 	constexpr float MinFireInterval = 0.05f;
+
+	// A weapon value after the owner's stats: the owner's own base value for Stat if it has one,
+	// otherwise WeaponValue with the owner's modifiers for Stat (e.g. stat boosts) applied on top.
+	// Without a stats component the weapon's value is used unchanged.
+	float ApplyOwnerStats(const AActor* Owner, EGrantMoneyStat Stat, float WeaponValue)
+	{
+		const UStatsComponent* Stats = Owner ? Owner->FindComponentByClass<UStatsComponent>() : nullptr;
+		if (!Stats)
+		{
+			return WeaponValue;
+		}
+
+		return Stats->HasStat(Stat) ? Stats->GetStat(Stat) : Stats->GetStatFromBase(Stat, WeaponValue);
+	}
 
 	bool IsLivingEnemy(const AEnemyBase* Enemy)
 	{
@@ -52,7 +67,7 @@ void UStarterWeaponComponent::ScheduleNextShot()
 {
 	if (const UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().SetTimer(FireTimerHandle, this, &UStarterWeaponComponent::HandleFireTimer, FMath::Max(FireInterval, MinFireInterval), false);
+		World->GetTimerManager().SetTimer(FireTimerHandle, this, &UStarterWeaponComponent::HandleFireTimer, GetEffectiveFireInterval(), false);
 	}
 }
 
@@ -129,7 +144,7 @@ AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 		return nullptr;
 	}
 
-	Orb->Launch(Direction, ProjectileSpeed, Damage, ProjectileLifetime);
+	Orb->Launch(Direction, ProjectileSpeed, GetEffectiveDamage(), ProjectileLifetime, GetEffectivePenetration());
 	Orb->FinishSpawning(SpawnTransform);
 
 	UE_LOG(LogTemp, Log, TEXT("StarterWeapon: %s fired an orb at %s."), *GetNameSafe(Owner), *GetNameSafe(Target));
@@ -145,4 +160,24 @@ bool UStarterWeaponComponent::TryFire()
 	}
 
 	return FireAt(Target) != nullptr;
+}
+
+float UStarterWeaponComponent::GetEffectiveDamage() const
+{
+	return ApplyOwnerStats(GetOwner(), EGrantMoneyStat::Damage, Damage);
+}
+
+float UStarterWeaponComponent::GetEffectiveFireInterval() const
+{
+	// Attack speed boosts are negative AttackInterval modifiers. However many are stacked, the
+	// interval never drops below the minimum, so a timer can never fire every frame.
+	return FMath::Max(ApplyOwnerStats(GetOwner(), EGrantMoneyStat::AttackInterval, FireInterval), MinFireInterval);
+}
+
+int32 UStarterWeaponComponent::GetEffectivePenetration() const
+{
+	const float Value = ApplyOwnerStats(GetOwner(), EGrantMoneyStat::Penetration, static_cast<float>(Penetration));
+
+	// Rounded down, with a small tolerance so a sum like 0.1 * 10 still counts as a whole 1.
+	return FMath::Max(0, FMath::FloorToInt32(Value + UE_KINDA_SMALL_NUMBER));
 }

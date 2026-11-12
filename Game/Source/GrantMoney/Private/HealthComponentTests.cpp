@@ -216,4 +216,34 @@ bool FHealthComponentEngineDamageTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FHealthComponentNoHealOnMaxGainTest,
+    "GrantMoney.Combat.HealthComponent.MaxHealthGainWithoutHeal",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHealthComponentNoHealOnMaxGainTest::RunTest(const FString& Parameters)
+{
+    HealthTest::FTestActor Test;
+    if (!Test.Create(*this, true, 100.0f))
+    {
+        return false;
+    }
+
+    UHealthComponent* Health = Test.Health;
+    UStatsComponent* Stats = Test.Stats;
+    TestTrue(TEXT("Healing on gain is the default"), Health->bHealOnMaxHealthGain);
+    Health->bHealOnMaxHealthGain = false;
+
+    Health->ApplyDamage(40.0f);
+    const FGrantMoneyStatModifierHandle Buff = Stats->AddModifier(EGrantMoneyStat::MaxHealth, EGrantMoneyStatModifierOp::Additive, 50.0f);
+    TestEqual(TEXT("Max health rises"), Health->GetMaxHealth(), 150.0f);
+    TestEqual(TEXT("Current health stays put"), Health->GetHealth(), 60.0f);
+
+    Stats->RemoveModifier(Buff);
+    Health->Heal(100.0f);
+    Stats->AddModifier(EGrantMoneyStat::MaxHealth, EGrantMoneyStatModifierOp::Multiplicative, -0.5f);
+    TestEqual(TEXT("A loss still clamps current health"), Health->GetHealth(), 50.0f);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -46,6 +46,9 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	Stats->SetBaseStat(EGrantMoneyStat::MaxHealth, DefaultMaxHealth);
 	Health = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
 
+	// Max-health stat boosts raise only the player's maximum; they do not heal (SCRUM-53).
+	Health->bHealOnMaxHealthGain = false;
+
 	// The player starts every run armed. The weapon starts firing when play begins.
 	StarterWeapon = CreateDefaultSubobject<UStarterWeaponComponent>(TEXT("StarterWeapon"));
 

@@ -114,4 +114,30 @@ bool FStatsComponentChangeEventTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FStatsComponentStatFromBaseTest,
+    "GrantMoney.Combat.StatsComponent.StatFromBase",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStatsComponentStatFromBaseTest::RunTest(const FString& Parameters)
+{
+    UStatsComponent* Stats = NewObject<UStatsComponent>();
+
+    TestEqual(TEXT("No modifiers: the given base comes back unchanged"), Stats->GetStatFromBase(EGrantMoneyStat::Damage, 10.0f), 10.0f);
+
+    Stats->AddModifier(EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Additive, 2.0f);
+    Stats->AddModifier(EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Multiplicative, 0.5f);
+    Stats->AddModifier(EGrantMoneyStat::MaxHealth, EGrantMoneyStatModifierOp::Additive, 99.0f);
+    TestEqual(TEXT("Same formula as GetStat, on the given base"), Stats->GetStatFromBase(EGrantMoneyStat::Damage, 10.0f), 18.0f);
+    TestFalse(TEXT("No base value is stored"), Stats->HasStat(EGrantMoneyStat::Damage));
+
+    Stats->SetBaseStat(EGrantMoneyStat::Damage, 4.0f);
+    TestEqual(TEXT("GetStat uses the stored base"), Stats->GetStat(EGrantMoneyStat::Damage), 9.0f);
+    TestEqual(TEXT("GetStatFromBase ignores the stored base"), Stats->GetStatFromBase(EGrantMoneyStat::Damage, 10.0f), 18.0f);
+
+    Stats->AddModifier(EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -2.0f);
+    TestEqual(TEXT("Never below zero"), Stats->GetStatFromBase(EGrantMoneyStat::AttackInterval, 1.0f), 0.0f);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
