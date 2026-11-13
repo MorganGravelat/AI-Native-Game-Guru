@@ -17,6 +17,7 @@
 #include "MapCameraPawn.h"
 #include "MapCameraPlayerController.h"
 #include "PlayerSpawnResolver.h"
+#include "RewardTotemSpawner.h"
 #include "RunHUD.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -41,6 +42,7 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 	SkyLightingClass = ASkyLightingActor::StaticClass();
 	RunControllerClass = ARunController::StaticClass();
 	EnemySpawnerClass = AEnemySpawner::StaticClass();
+	RewardTotemSpawnerClass = ARewardTotemSpawner::StaticClass();
 	BossEncounterClass = ABossEncounter::StaticClass();
 	DefaultPawnClass = PlayerCharacterClass;
 	HUDClass = ARunHUD::StaticClass();
@@ -277,6 +279,19 @@ void AGrantMoneyGameMode::PrepareRun()
 		World->SpawnActor<AEnemySpawner>(EnemySpawnerClass, FTransform::Identity, SpawnParams);
 	}
 
+	// And the reward totems: the spawner waits for the map to be built, then places them once.
+	bool bHasTotemSpawner = false;
+	for (TActorIterator<ARewardTotemSpawner> It(World); It; ++It)
+	{
+		bHasTotemSpawner = true;
+		break;
+	}
+
+	if (!bHasTotemSpawner && RewardTotemSpawnerClass)
+	{
+		World->SpawnActor<ARewardTotemSpawner>(RewardTotemSpawnerClass, FTransform::Identity, SpawnParams);
+	}
+
 	// And for the boss encounter: one placed in the level wins, so a level can pick its own boss.
 	ABossEncounter* Encounter = ABossEncounter::Find(World);
 	if (!Encounter && BossEncounterClass)
@@ -397,4 +412,3 @@ void AGrantMoneyGameMode::HandleRunStateChanged(EGrantMoneyRunState OldState, EG
 		PC->ShowGameOver(RunController->GetElapsedSeconds(), Experience);
 	}
 }
-
