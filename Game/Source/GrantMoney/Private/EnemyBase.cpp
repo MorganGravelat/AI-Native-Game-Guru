@@ -11,6 +11,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/DamageType.h"
+#include "GrantMoneyAudio.h"
 #include "HAL/IConsoleManager.h"
 #include "HealthComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -119,6 +120,16 @@ void AEnemyBase::BeginPlay()
 	Super::BeginPlay();
 
 	Health->OnDeath.AddDynamic(this, &AEnemyBase::HandleHealthDepleted);
+	Health->OnHealthChanged.AddDynamic(this, &AEnemyBase::HandleHealthChanged);
+}
+
+void AEnemyBase::HandleHealthChanged(UHealthComponent* ChangedHealth, float NewHealth, float Delta)
+{
+	// The killing blow is covered by the death sound instead.
+	if (Delta < 0.0f && NewHealth > 0.0f)
+	{
+		GrantMoneyAudio::PlayAtLocation(this, HitSound, GetActorLocation());
+	}
 }
 
 void AEnemyBase::HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser)
@@ -142,6 +153,8 @@ void AEnemyBase::HandleDeath(AActor* Killer)
 
 	// Drop before the enemy is removed, at the spot it died.
 	SpawnPickupDrops();
+
+	GrantMoneyAudio::PlayAtLocation(this, DeathSound, DeathTransform.GetLocation());
 
 	// Report before destroying, so listeners can still read the enemy (location, stats, type).
 	if (UWorld* World = GetWorld())

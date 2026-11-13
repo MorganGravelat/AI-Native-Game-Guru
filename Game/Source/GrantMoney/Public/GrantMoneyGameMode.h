@@ -14,6 +14,7 @@ class AEnemySpawner;
 class ARewardTotemSpawner;
 class ABossEncounter;
 class ARunController;
+class USoundBase;
 
 /**
  * Spawns the player character on a safe cell of the level's generated map and
@@ -105,7 +106,36 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	TSubclassOf<ABossEncounter> BossEncounterClass;
 
+	// Looping music from the start of the level. Turn on Looping in the Sound Wave asset or it plays once.
+	// Empty for none.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio")
+	TSoftObjectPtr<USoundBase> MainMusic;
+
+	// Played when the run is won, after the music fades out. Empty for none.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio")
+	TSoftObjectPtr<USoundBase> VictorySound;
+
+	// Played when the run is lost, after the music fades out. Empty for none.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio")
+	TSoftObjectPtr<USoundBase> GameOverSound;
+
+	// Seconds the music takes to fade in, out, or across to the boss music.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio", meta = (ClampMin = "0.0", Units = "s"))
+	float MusicFadeSeconds = 1.5f;
+
+	// How loud the music is while the pause menu, the level-up screen or a charging totem is holding it down,
+	// as a fraction of normal (0.6 = 40% quieter).
+	UPROPERTY(EditDefaultsOnly, Category = "Audio", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MusicDuckVolume = 0.6f;
+
+	// Seconds the music takes to go down to that volume and back.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio", meta = (ClampMin = "0.0", Units = "s"))
+	float MusicDuckFadeSeconds = 0.4f;
+
 private:
+	// Fades out whatever music is playing and starts Music (if set) in its place.
+	void SwitchMusic(const TSoftObjectPtr<USoundBase>& Music);
+
 	UPROPERTY(Transient)
 	TObjectPtr<AMapCameraPawn> CameraPawn;
 

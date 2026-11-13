@@ -7,6 +7,7 @@
 #include "XpOrbPickup.generated.h"
 
 class UMaterialInterface;
+class USoundBase;
 
 /**
  * Small glowing green orb dropped by enemies. It flies to the player when they come close (all of
@@ -29,6 +30,10 @@ public:
 	// XP added to the collector's total when this orb arrives.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pickup|XP", meta = (ClampMin = "0.0"))
 	float XpValue = 5.0f;
+
+	// Played (not positioned) when the player collects the orb. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pickup|Audio")
+	TSoftObjectPtr<USoundBase> CollectSound;
 
 protected:
 	virtual void BeginPlay() override;

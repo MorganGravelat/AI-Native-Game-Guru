@@ -8,6 +8,7 @@
 
 class APawn;
 class ARewardTotem;
+class UAudioComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UNiagaraSystem;
@@ -140,6 +141,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Feedback")
 	TObjectPtr<USoundBase> ActivationSound;
 
+	// The sound of the bar charging, which should be as long as ChargeSeconds (3 s by default): the sound's
+	// position follows the bar. It plays while the player stands in range. When the player steps off it stops, and
+	// the bar drains; when they step back on it starts again at the point that matches where the bar now is (the
+	// bar at 1 s of 3 resumes the sound from its 1 s mark), and a bar that drained to empty restarts the sound from the
+	// beginning. Needs no Looping. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Feedback")
+	TObjectPtr<USoundBase> ChargeSound;
+
+	// Seconds into ChargeSound that match a bar fill (0 to 1): the fill times ChargeSeconds.
+	static float ComputeChargeSoundTime(float Progress, float ChargeSeconds);
+
 	// Optional Niagara burst at the totem on activation.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Feedback")
 	TObjectPtr<UNiagaraSystem> ActivationEffect;
@@ -152,6 +164,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// Base of the totem, at ground level.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Totem")
@@ -192,6 +205,7 @@ private:
 	bool ApplyCustomLook();
 	void SetState(ERewardTotemState NewState);
 	void UpdateBar();
+	void UpdateChargeSound();
 	void FaceBarToCamera();
 	void ApplyColors();
 
@@ -205,9 +219,19 @@ private:
 	float CooldownRemaining = 0.0f;
 	ERewardTotemState State = ERewardTotemState::Ready;
 
+	// True while the player is in range and the bar is filling. Drives the charge sound and the music duck.
+	bool bFilling = false;
+
+	// True while the charge sound and the music duck are held for a filling bar.
+	bool bHoldingChargeFeedback = false;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> TotemGlow;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> DiscGlow;
+
+	// The playing charge sound, if any. Spawned when charging starts and fades out when it stops.
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> ChargeAudio;
 };

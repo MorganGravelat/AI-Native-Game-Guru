@@ -12,6 +12,13 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "RunController.h"
+#include "GrantMoneyAudio.h"
+
+UGameOverWidget::UGameOverWidget(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
+{
+    ClickSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/UI/ButtonPress.ButtonPress"));
+}
 
 void UGameOverWidget::NativeConstruct()
 {
@@ -72,6 +79,8 @@ void UGameOverWidget::SetResults(float SurvivalSeconds, float Experience, const 
 
 void UGameOverWidget::HandleRestart()
 {
+    GrantMoneyAudio::Play2D(this, ClickSound);
+
     // Reloading the level is the simplest reliable restart: a fresh UWorld recreates every actor (player,
     // enemies, projectiles, pickups) and every UWorldSubsystem (for example UCombatEventsSubsystem) from
     // scratch, so nothing from the previous run can leak into the next one.
@@ -81,6 +90,8 @@ void UGameOverWidget::HandleRestart()
 
 void UGameOverWidget::HandleQuit()
 {
+    GrantMoneyAudio::Play2D(this, ClickSound);
+
     APlayerController* PC = GetOwningPlayer();
     if (!PC)
     {

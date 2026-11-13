@@ -7,6 +7,7 @@
 #include "LevelUpWidget.generated.h"
 
 class UButton;
+class USoundBase;
 class UTextBlock;
 class UUpgradeComponent;
 
@@ -26,6 +27,8 @@ class GRANTMONEY_API ULevelUpWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
+    ULevelUpWidget(const FObjectInitializer& ObjectInitializer);
+
     // Remembers which component to read options from and report choices back to. Call once, before the
     // first RefreshOptions.
     void SetUpgradeComponent(UUpgradeComponent* InUpgrades);
@@ -35,6 +38,13 @@ public:
 
 protected:
     virtual void NativeConstruct() override;
+
+    // Turns the background music down while the choice is on screen.
+    virtual void NativeDestruct() override;
+
+    // Played when an upgrade is chosen. Empty for silence.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> ClickSound;
 
     // Names must match the widgets in WBP_LevelUp exactly.
     UPROPERTY(meta = (BindWidget))

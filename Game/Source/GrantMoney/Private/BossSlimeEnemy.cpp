@@ -9,6 +9,7 @@
 #include "EnemyEmergenceComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GrantMoneyAudio.h"
 #include "HealthComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "StatsComponent.h"
@@ -24,9 +25,6 @@ namespace
 
 	constexpr float BossContactDamage = 20.0f;
 	constexpr float BossAttackInterval = 1.5f;
-
-	// How much wider the body swells by the end of the windup (height is kept so it stays on the ground).
-	constexpr double TelegraphGrow = 0.15;
 
 	// 0 = use the class default. Set by SetDebugMaxHealthOverride.
 	float GDebugMaxHealthOverride = 0.0f;
@@ -51,6 +49,10 @@ ABossSlimeEnemy::ABossSlimeEnemy()
 	// No rare stat boosts from the boss; it still leaves the guaranteed XP orb.
 	BonusPickupDrops.Reset();
 
+	DeathSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Enemy/SlimeBossDying.SlimeBossDying"));
+	LungeWindupSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Enemy/SlimeBossDashWindup.SlimeBossDashWindup"));
+	LungeSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Enemy/SlimeBossDashSound.SlimeBossDashSound"));
+
 	GetCapsuleComponent()->InitCapsuleSize(BossCapsuleRadius, BossCapsuleRadius);
 	PlaceholderMesh->SetRelativeScale3D(FVector(BossPlaceholderScale));
 
@@ -66,8 +68,6 @@ ABossSlimeEnemy::ABossSlimeEnemy()
 void ABossSlimeEnemy::BeginPlay()
 {
 	Super::BeginPlay();
-
-	BaseMeshScale = PlaceholderMesh->GetRelativeScale3D();
 
 	// The editable BossMaxHealth, unless the debug override is on. Raising max health also heals by the gain
 	// (UHealthComponent::bHealOnMaxHealthGain) and the explicit Heal covers a lowered value, so it starts full.
@@ -175,7 +175,10 @@ bool ABossSlimeEnemy::PlanLunge(const FBossLungeSettings& Settings, FVector& Out
 		return false;
 	}
 
-	if (LungeLeadStrength > UE_KINDA_SMALL_NUMBER)
+	// ComboIndex is 0 for the first dash (planned from Idle) and already counted up for the dashes after it.
+	const float LeadStrength = LungeState.ComboIndex == 0 ? FirstDashLeadStrength : LungeLeadStrength;
+
+	if (LeadStrength > UE_KINDA_SMALL_NUMBER)
 	{
 		const FVector TargetVelocity = GetTargetVelocity();
 		if (!TargetVelocity.IsNearlyZero())
@@ -188,7 +191,7 @@ bool ABossSlimeEnemy::PlanLunge(const FBossLungeSettings& Settings, FVector& Out
 			{
 				// Blend rather than use the full lead outright, so a lower LungeLeadStrength still leaves a
 				// window to juke during the telegraph instead of making the dash unavoidable.
-				const FVector Blended = FMath::Lerp(Direction, LeadDirection, FMath::Clamp(LungeLeadStrength, 0.0f, 1.0f));
+				const FVector Blended = FMath::Lerp(Direction, LeadDirection, FMath::Clamp(LeadStrength, 0.0f, 1.0f));
 				FVector Normalized = Blended;
 				if (Normalized.Normalize())
 				{
@@ -252,6 +255,7 @@ void ABossSlimeEnemy::AdvanceLunge(float DeltaSeconds)
 	{
 	case EBossLungeEvent::WindupStarted:
 		BeginDashWindup(PlannedDirection, PlannedSafeDistance, Settings);
+		GrantMoneyAudio::PlayAtLocation(this, LungeWindupSound, GetActorLocation());
 		UE_LOG(LogTemp, Log, TEXT("BossSlimeEnemy: %s winds up a lunge combo of %d (%.1f s, safe distance %.0f cm)."), *GetName(), Settings.ComboCount, Settings.WindupSeconds, PlannedSafeDistance);
 		break;
 
@@ -261,6 +265,7 @@ void ABossSlimeEnemy::AdvanceLunge(float DeltaSeconds)
 		if (PlanLunge(Settings, PlannedDirection, PlannedSafeDistance) && PlannedSafeDistance >= MinLungeDistance)
 		{
 			BeginDashWindup(PlannedDirection, PlannedSafeDistance, Settings);
+			GrantMoneyAudio::PlayAtLocation(this, LungeWindupSound, GetActorLocation());
 			UE_LOG(LogTemp, Log, TEXT("BossSlimeEnemy: %s re-aims for dash %d of %d."), *GetName(), LungeState.ComboIndex + 1, Settings.ComboCount);
 		}
 		else
@@ -273,6 +278,7 @@ void ABossSlimeEnemy::AdvanceLunge(float DeltaSeconds)
 	}
 
 	case EBossLungeEvent::LungeStarted:
+		GrantMoneyAudio::PlayAtLocation(this, LungeSound, GetActorLocation());
 		UE_LOG(LogTemp, Log, TEXT("BossSlimeEnemy: %s lunges for %.2f s at %.0f cm/s."), *GetName(), LungeState.ActiveLungeDuration, Settings.Speed);
 		break;
 
@@ -337,18 +343,29 @@ void ABossSlimeEnemy::HandleDeath(AActor* Killer)
 	Super::HandleDeath(Killer);
 }
 
+bool ABossSlimeEnemy::GetSquishOverride(float& OutSwing) const
+{
+	switch (LungeState.Phase)
+	{
+	case EBossLungePhase::Windup:
+		// Sinks lower the closer the dash gets.
+		OutSwing = -WindupSquash * LungeState.GetWindupAlpha(GetLungeSettings());
+		return true;
+	case EBossLungePhase::Lunging:
+		OutSwing = LungeStretch;
+		return true;
+	default:
+		return false;
+	}
+}
+
 void ABossSlimeEnemy::ApplyTelegraph(float WindupAlpha)
 {
 	const float Alpha = FMath::Clamp(WindupAlpha, 0.0f, 1.0f);
 
+	// The body shape during the windup and the charge comes from GetSquishOverride, so only the colour is set here.
 	if (BodyMaterial)
 	{
 		BodyMaterial->SetVectorParameterValue(ColorParameterName, FMath::Lerp(BodyColor, TelegraphColor, Alpha));
-	}
-
-	// Emergence owns the mesh scale while it plays, and telegraphing never happens then.
-	if (PlaceholderMesh && !IsEmerging())
-	{
-		PlaceholderMesh->SetRelativeScale3D(BaseMeshScale * FVector(1.0 + TelegraphGrow * Alpha, 1.0 + TelegraphGrow * Alpha, 1.0));
 	}
 }

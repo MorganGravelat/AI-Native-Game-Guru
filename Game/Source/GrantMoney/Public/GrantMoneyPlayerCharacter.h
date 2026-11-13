@@ -13,6 +13,7 @@ class UGrantMoneyCharacterVisualData;
 class UHealthComponent;
 class ULevelComponent;
 class UPickupComponent;
+class USoundBase;
 class UStarterWeaponComponent;
 class UStatsComponent;
 class UUpgradeComponent;
@@ -107,7 +108,19 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	TObjectPtr<UInputAction> MoveAction;
 
+	// Played (not positioned) when the player is hurt but not killed. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+	TSoftObjectPtr<USoundBase> HurtSound;
+
+	// Played each time the player gains a level, as the upgrade choice opens. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+	TSoftObjectPtr<USoundBase> LevelUpSound;
+
 private:
+	// Bound to Health->OnHealthChanged. Plays HurtSound when health went down and the player is still alive.
+	UFUNCTION()
+	void HandleHealthChanged(UHealthComponent* ChangedHealth, float NewHealth, float Delta);
+
 	void ApplyVisualData();
 	void PlayLocomotionAnimation(UAnimationAsset* Animation);
 

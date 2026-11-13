@@ -6,6 +6,8 @@
 #include "TimerManager.h"
 #include "BossEncounter.h"
 #include "Components/CapsuleComponent.h"
+#include "GrantMoneyAudio.h"
+#include "GrantMoneyAudioSubsystem.h"
 #include "EnemySpawner.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -44,6 +46,9 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 	EnemySpawnerClass = AEnemySpawner::StaticClass();
 	RewardTotemSpawnerClass = ARewardTotemSpawner::StaticClass();
 	BossEncounterClass = ABossEncounter::StaticClass();
+	MainMusic = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Music/Main_Theme.Main_Theme"));
+	VictorySound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Player/Victory.Victory"));
+	GameOverSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Player/GameOver.GameOver"));
 	DefaultPawnClass = PlayerCharacterClass;
 	HUDClass = ARunHUD::StaticClass();
 }
@@ -51,6 +56,8 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 void AGrantMoneyGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SwitchMusic(MainMusic);
 
 	UWorld* World = GetWorld();
 	if (!World || !SkyLightingClass)
@@ -382,13 +389,28 @@ void AGrantMoneyGameMode::CheckRunReady()
 	}
 }
 
+void AGrantMoneyGameMode::SwitchMusic(const TSoftObjectPtr<USoundBase>& Music)
+{
+	if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+	{
+		Audio->MusicDuckVolume = MusicDuckVolume;
+		Audio->MusicDuckFadeSeconds = MusicDuckFadeSeconds;
+		Audio->PlayMusic(Music, MusicFadeSeconds);
+	}
+}
+
 void AGrantMoneyGameMode::HandleRunStateChanged(EGrantMoneyRunState OldState, EGrantMoneyRunState NewState)
 {
+	// The boss's arrival sound and music are handled by ABossEncounter, which takes the music over from here.
 	const bool bWon = NewState == EGrantMoneyRunState::Won;
 	if (!bWon && NewState != EGrantMoneyRunState::Lost)
 	{
 		return;
 	}
+
+	// The music gives way to the result sound, which plays even though the game is about to be paused.
+	SwitchMusic(TSoftObjectPtr<USoundBase>());
+	GrantMoneyAudio::Play2D(this, bWon ? VictorySound : GameOverSound);
 
 	AMapCameraPlayerController* PC = Cast<AMapCameraPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
 	if (!PC)

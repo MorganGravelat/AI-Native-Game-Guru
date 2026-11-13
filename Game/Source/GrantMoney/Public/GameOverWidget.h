@@ -7,6 +7,7 @@
 #include "GameOverWidget.generated.h"
 
 class UButton;
+class USoundBase;
 class UTextBlock;
 
 /**
@@ -25,12 +26,18 @@ class GRANTMONEY_API UGameOverWidget : public UUserWidget
     GENERATED_BODY()
 
 public:
+    UGameOverWidget(const FObjectInitializer& ObjectInitializer);
+
     // Fills in the result text. Call before AddToViewport so nothing shows a stale "0:00" frame.
     // Title (for example "Victory!") replaces the text of the optional ResultTitleText; empty leaves it as designed.
     void SetResults(float SurvivalSeconds, float Experience, const FText& Title = FText::GetEmpty());
 
 protected:
     virtual void NativeConstruct() override;
+
+    // Played when Restart or Quit is clicked. Empty for silence.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> ClickSound;
 
     // Names must match the widgets in WBP_GameOver exactly.
     UPROPERTY(meta = (BindWidget))

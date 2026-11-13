@@ -8,16 +8,39 @@
 
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+#include "GrantMoneyAudio.h"
+#include "GrantMoneyAudioSubsystem.h"
 #include "UpgradeComponent.h"
+
+ULevelUpWidget::ULevelUpWidget(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
+{
+    ClickSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/UI/ButtonPress.ButtonPress"));
+}
 
 void ULevelUpWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+    {
+        Audio->AcquireMusicDuck(this);
+    }
+
     // AddUnique so a re-constructed widget never double-binds.
     if (Option1Button) { Option1Button->OnClicked.AddUniqueDynamic(this, &ULevelUpWidget::HandleOption1Clicked); }
     if (Option2Button) { Option2Button->OnClicked.AddUniqueDynamic(this, &ULevelUpWidget::HandleOption2Clicked); }
     if (Option3Button) { Option3Button->OnClicked.AddUniqueDynamic(this, &ULevelUpWidget::HandleOption3Clicked); }
+}
+
+void ULevelUpWidget::NativeDestruct()
+{
+    if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+    {
+        Audio->ReleaseMusicDuck(this);
+    }
+
+    Super::NativeDestruct();
 }
 
 void ULevelUpWidget::SetUpgradeComponent(UUpgradeComponent* InUpgrades)
@@ -57,6 +80,8 @@ void ULevelUpWidget::HandleOption3Clicked() { ChooseIndex(2); }
 
 void ULevelUpWidget::ChooseIndex(int32 Index)
 {
+    GrantMoneyAudio::Play2D(this, ClickSound);
+
     if (UUpgradeComponent* Comp = Upgrades.Get())
     {
         Comp->ChooseUpgrade(Index);
