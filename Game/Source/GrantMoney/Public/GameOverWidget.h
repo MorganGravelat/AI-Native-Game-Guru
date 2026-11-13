@@ -10,7 +10,8 @@ class UButton;
 class UTextBlock;
 
 /**
- * Shown once the run ends in a loss (see GrantMoneyGameMode::HandleRunStateChanged). Displays the
+ * Shown once the run ends: in a loss (see GrantMoneyGameMode::HandleRunStateChanged) as the Game Over screen,
+ * and in a win as the Victory screen, which is this same class with a different title. Displays the
  * survival time and the player's total XP, and offers Restart (reloads this level from scratch, which
  * resets every run-scoped actor and subsystem) or Quit. Follows the same conventions as
  * UPauseMenuWidget: the controller creates it, sets the input mode and cursor, and adds it to the
@@ -25,7 +26,8 @@ class GRANTMONEY_API UGameOverWidget : public UUserWidget
 
 public:
     // Fills in the result text. Call before AddToViewport so nothing shows a stale "0:00" frame.
-    void SetResults(float SurvivalSeconds, float Experience);
+    // Title (for example "Victory!") replaces the text of the optional ResultTitleText; empty leaves it as designed.
+    void SetResults(float SurvivalSeconds, float Experience, const FText& Title = FText::GetEmpty());
 
 protected:
     virtual void NativeConstruct() override;
@@ -36,6 +38,11 @@ protected:
 
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UTextBlock> ExperienceText;
+
+    // Optional heading. Add a TextBlock with this name to show "Game Over" or "Victory!" from one widget.
+    // Without it, the widget retitles whichever TextBlock currently reads "Game Over".
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> ResultTitleText;
 
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UButton> RestartButton;

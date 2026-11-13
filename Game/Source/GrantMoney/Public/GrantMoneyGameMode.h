@@ -12,6 +12,7 @@ class AMapCameraPawn;
 class ASkyLightingActor;
 class AEnemySpawner;
 class ARewardTotemSpawner;
+class ABossEncounter;
 class ARunController;
 
 /**
@@ -27,7 +28,9 @@ class ARunController;
  * a default ARewardTotemSpawner scatters them over the map unless the level has its own spawner.
  *
  * On a loss (the player's HealthComponent reaching zero, see AGrantMoneyPlayerCharacter), it pauses the
- * game and shows the local player's Game Over screen with survival time and XP (SCRUM-44). Restart and
+ * game and shows the local player's Game Over screen with survival time and XP (SCRUM-44); on a win (the
+ * boss dying, see ABossEncounter) it shows the same screen as Victory. A boss encounter is created
+ * (or a level's own used) and bound to the run, like the spawner. Restart and
  * Quit are owned entirely by that screen (UGameOverWidget); this class only reacts to the state change.
  */
 UCLASS()
@@ -67,8 +70,8 @@ protected:
 	void CheckRunReady();
 
 	// Bound to RunController->OnStateChanged. On Lost, pauses the game and shows the Game Over screen
-	// with the player's survival time and XP (SCRUM-44). Does nothing for every other transition; Won
-	// has no screen yet (there is no boss to reach it).
+	// with the player's survival time and XP (SCRUM-44); on Won (the boss died) it does the same with the
+	// Victory screen. Does nothing for every other transition.
 	UFUNCTION()
 	void HandleRunStateChanged(EGrantMoneyRunState OldState, EGrantMoneyRunState NewState);
 
@@ -96,6 +99,11 @@ protected:
 	// Defaults to ARewardTotemSpawner (3 totems). Spawned only when the level has no ARewardTotemSpawner. Null disables it.
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	TSubclassOf<ARewardTotemSpawner> RewardTotemSpawnerClass;
+
+	// Defaults to ABossEncounter (one slime boss when the run enters BossPhase). Spawned only when the level has
+	// no ABossEncounter. Null disables the boss, so the run can then only end in a loss.
+	UPROPERTY(EditDefaultsOnly, Category = "Run")
+	TSubclassOf<ABossEncounter> BossEncounterClass;
 
 private:
 	UPROPERTY(Transient)

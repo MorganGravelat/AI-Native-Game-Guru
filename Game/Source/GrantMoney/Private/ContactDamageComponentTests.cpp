@@ -127,6 +127,29 @@ bool FContactDamageReachTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FContactDamageLogHitsTest,
+    "GrantMoney.Combat.ContactDamageComponent.LogHitsIsOptional",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FContactDamageLogHitsTest::RunTest(const FString& Parameters)
+{
+    TestFalse(TEXT("Hit logging is off by default"), GetDefault<UContactDamageComponent>()->bLogHits);
+
+    ContactTest::FScene Scene;
+    if (!Scene.Create(*this, 30.0f, false))
+    {
+        return false;
+    }
+
+    // Logging a hit must not change it: same damage, same interval.
+    Scene.Contact->bLogHits = true;
+    TestTrue(TEXT("The hit lands with logging on"), Scene.Contact->TryApplyContactDamage(Scene.Victim));
+    TestEqual(TEXT("Same damage"), Scene.VictimHealth->GetHealth(), 90.0f);
+    TestFalse(TEXT("Still limited by the interval"), Scene.Contact->TryApplyContactDamage(Scene.Victim));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FContactDamageIntervalTest,
     "GrantMoney.Combat.ContactDamageComponent.Interval",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

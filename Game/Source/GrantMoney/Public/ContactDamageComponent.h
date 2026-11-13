@@ -58,6 +58,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "0.0"))
 	float FallbackDamage = 10.0f;
 
+	// When true, every hit that lands is written to the Output Log (who hit whom, for how much). Off by default
+	// so a crowd of slimes stays quiet; the boss turns it on so its hit cadence can be read while testing.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	bool bLogHits = false;
+
 protected:
 	virtual void BeginPlay() override;
 

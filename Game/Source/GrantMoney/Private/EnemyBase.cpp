@@ -263,7 +263,7 @@ FVector AEnemyBase::GetMoveDirection() const
 	return ToTarget.GetSafeNormal();
 }
 
-void AEnemyBase::MoveTowardTarget()
+float AEnemyBase::GetDesiredMoveSpeed() const
 {
 	// Slow in proportion to the distance left, so the enemy settles at StopDistance. Starting and
 	// stopping at full speed on the boundary makes it stutter when the target moves away slowly.
@@ -274,8 +274,13 @@ void AEnemyBase::MoveTowardTarget()
 		Speed *= FMath::Clamp(Remaining / SlowdownDistance, 0.0f, 1.0f);
 	}
 
+	return Speed;
+}
+
+void AEnemyBase::MoveTowardTarget()
+{
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	Movement->MaxWalkSpeed = Speed;
+	Movement->MaxWalkSpeed = GetDesiredMoveSpeed();
 
 	// Applied every frame too, so traversal can be tuned while playing (SCRUM-29). The movement
 	// component does the actual stepping/sliding itself; this only sets how far it is allowed to go.

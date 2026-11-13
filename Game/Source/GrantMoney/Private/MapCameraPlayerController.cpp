@@ -192,18 +192,30 @@ void AMapCameraPlayerController::TogglePauseMenu()
 
 void AMapCameraPlayerController::ShowGameOver(float SurvivalSeconds, float Experience)
 {
-	if (!GameOverWidgetClass)
+	ShowRunResult(GameOverWidgetClass, FText::FromString(TEXT("Game Over")), SurvivalSeconds, Experience);
+}
+
+void AMapCameraPlayerController::ShowVictory(float SurvivalSeconds, float Experience)
+{
+	// WBP_GameOver doubles as the Victory screen unless a dedicated class is assigned.
+	ShowRunResult(VictoryWidgetClass ? VictoryWidgetClass : GameOverWidgetClass, FText::FromString(TEXT("Victory!")), SurvivalSeconds, Experience);
+}
+
+void AMapCameraPlayerController::ShowRunResult(TSubclassOf<UGameOverWidget> WidgetClass, const FText& Title, float SurvivalSeconds, float Experience)
+{
+	if (!WidgetClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("MapCameraPlayerController: WBP_GameOver class is not set."));
+		UE_LOG(LogTemp, Error, TEXT("MapCameraPlayerController: the result screen class (WBP_GameOver) is not set."));
 		return;
 	}
 
-	// The run just ended; a pause menu open over the Game Over screen would be confusing.
+	// The run just ended; a pause menu open over the result screen would be confusing.
 	ClosePauseMenu();
 
+	// A run ends once, so this is created once; a repeated call just refreshes the text.
 	if (!IsValid(GameOverWidget))
 	{
-		GameOverWidget = CreateWidget<UGameOverWidget>(this, GameOverWidgetClass);
+		GameOverWidget = CreateWidget<UGameOverWidget>(this, WidgetClass);
 	}
 
 	if (!GameOverWidget)
@@ -211,7 +223,7 @@ void AMapCameraPlayerController::ShowGameOver(float SurvivalSeconds, float Exper
 		return;
 	}
 
-	GameOverWidget->SetResults(SurvivalSeconds, Experience);
+	GameOverWidget->SetResults(SurvivalSeconds, Experience, Title);
 
 	if (!GameOverWidget->IsInViewport())
 	{
