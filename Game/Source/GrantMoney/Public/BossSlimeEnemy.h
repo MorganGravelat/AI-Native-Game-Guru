@@ -81,6 +81,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Lunge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float LungeLeadStrength = 0.6f;
 
+	// The same blend for the first dash of each combo only. 0 (the default) aims that dash straight at where the
+	// target is when its windup starts: the first windup is the longest, so a lead computed that far ahead is
+	// mostly a guess. The re-aimed dashes after it use LungeLeadStrength.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Lunge", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FirstDashLeadStrength = 0.0f;
+
 	// Body colour, and the colour it fades to during the windup. Applied to ColorParameterName of
 	// BodyMaterialBase; values above 1 glow brighter.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Visual")
@@ -96,6 +102,24 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Visual")
 	FName ColorParameterName = TEXT("EmissiveColor");
+
+	// How much flatter (and wider) the body gets by the end of a lunge windup, as a fraction of its height.
+	// The body then springs taller and thinner for the charge. Needs bSquishWhileMoving on. Walking is
+	// the normal slime squish (SquishAmount and SquishFrequency).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Visual", meta = (ClampMin = "0.0", ClampMax = "0.6"))
+	float WindupSquash = 0.3f;
+
+	// How much taller (and thinner) the body is while it charges, as a fraction of its height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Visual", meta = (ClampMin = "0.0", ClampMax = "0.6"))
+	float LungeStretch = 0.25f;
+
+	// Played where the boss stands at the start of every dash windup (each dash of a combo). Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio")
+	TSoftObjectPtr<USoundBase> LungeWindupSound;
+
+	// Played where the boss stands as each dash launches.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio")
+	TSoftObjectPtr<USoundBase> LungeSound;
 
 	// Max health of this boss, applied at spawn to the MaxHealth stat. Change it on a Blueprint child (or use
 	// the GrantMoney.BossHealth console command while testing).
@@ -125,6 +149,7 @@ protected:
 	virtual FVector GetMoveDirection() const override;
 	virtual float GetDesiredMoveSpeed() const override;
 	virtual void HandleDeath(AActor* Killer) override;
+	virtual bool GetSquishOverride(float& OutSwing) const override;
 
 	// Flat (no vertical part) velocity of the current target, used to lead a dash. Defaults to the target
 	// actor's own GetVelocity() (zero for a stationary target); a test double overrides this to supply a
@@ -151,8 +176,6 @@ private:
 	FSpawnArena Arena;
 	bool bArenaOverridden = false;
 	bool bLoggedNoArena = false;
-
-	FVector BaseMeshScale = FVector::OneVector;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> BodyMaterial;

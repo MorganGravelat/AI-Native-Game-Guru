@@ -11,6 +11,7 @@ class AXpOrbPickup;
 class UContactDamageComponent;
 class UEnemyEmergenceComponent;
 class UHealthComponent;
+class USoundBase;
 class UStatsComponent;
 
 /**
@@ -122,6 +123,14 @@ public:
 	// on its own and never affects the guaranteed XP orb above.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Drops")
 	TArray<FEnemyPickupDrop> BonusPickupDrops;
+
+	// Played where the enemy stands each time it is hurt but not killed. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Audio")
+	TSoftObjectPtr<USoundBase> HitSound;
+
+	// Played where the enemy dies. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy|Audio")
+	TSoftObjectPtr<USoundBase> DeathSound;
 	UStatsComponent* GetStats() const { return Stats; }
 	UHealthComponent* GetHealth() const { return Health; }
 	UContactDamageComponent* GetContactDamage() const { return ContactDamage; }
@@ -180,6 +189,10 @@ private:
 	// Bound to Health->OnDeath; forwards to HandleDeath.
 	UFUNCTION()
 	void HandleHealthDepleted(UHealthComponent* DepletedHealth, AActor* DamageCauser);
+
+	// Bound to Health->OnHealthChanged. Plays HitSound when health went down and the enemy is still alive.
+	UFUNCTION()
+	void HandleHealthChanged(UHealthComponent* ChangedHealth, float NewHealth, float Delta);
 
 	// Bound to Emergence->OnFinished. Turns pursuit and contact damage on.
 	UFUNCTION()

@@ -5,6 +5,7 @@
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "GrantMoneyAudio.h"
 #include "GrantMoneyStatTypes.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -32,6 +33,8 @@ AXpOrbPickup::AXpOrbPickup()
 	{
 		GlowMaterial = GlowFinder.Object;
 	}
+
+	CollectSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Pickups/XP_Pickup.XP_Pickup"));
 }
 
 void AXpOrbPickup::BeginPlay()
@@ -61,4 +64,5 @@ void AXpOrbPickup::OnCollected(AActor* Collector)
 	const float NewTotal = Stats->GetBaseStat(EGrantMoneyStat::Experience) + XpValue;
 	Stats->SetBaseStat(EGrantMoneyStat::Experience, NewTotal);
 	UE_LOG(LogTemp, Log, TEXT("XpOrbPickup: %s gained %.1f XP (total %.1f)."), *GetNameSafe(Collector), XpValue, NewTotal);
+	GrantMoneyAudio::Play2D(this, CollectSound);
 }

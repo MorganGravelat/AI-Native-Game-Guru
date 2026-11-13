@@ -10,6 +10,8 @@
 #include "EngineUtils.h"
 #include "HealthComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "GrantMoneyAudio.h"
+#include "GrantMoneyAudioSubsystem.h"
 #include "TimerManager.h"
 
 ABossEncounter::ABossEncounter()
@@ -21,6 +23,8 @@ ABossEncounter::ABossEncounter()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
 	BossClass = ABossSlimeEnemy::StaticClass();
+	ArrivalSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Enemy/SlimeBossIntroSound.SlimeBossIntroSound"));
+	BossMusic = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Music/SlimeBossTheme.SlimeBossTheme"));
 }
 
 void ABossEncounter::BeginPlay()
@@ -190,6 +194,7 @@ void ABossEncounter::AttemptSpawn()
 
 			NewBoss->GetHealth()->OnDeath.AddUniqueDynamic(this, &ABossEncounter::HandleBossDeath);
 			NewBoss->BeginEmergence();
+			StartBossAudio();
 
 			UE_LOG(LogTemp, Log, TEXT("BossEncounter: boss %s spawned at %s on attempt %d."), *NewBoss->GetName(), *CapsuleCentre.ToCompactString(), SpawnAttempts);
 			return;
@@ -254,6 +259,49 @@ void ABossEncounter::CancelPendingWork()
 	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RetryTimer);
+		World->GetTimerManager().ClearTimer(BossMusicTimer);
+	}
+}
+
+void ABossEncounter::StartBossAudio()
+{
+	// The level music gives way to the arrival sound.
+	if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+	{
+		Audio->PlayMusic(TSoftObjectPtr<USoundBase>(), LevelMusicFadeOutSeconds);
+	}
+
+	GrantMoneyAudio::Play2D(this, ArrivalSound, ArrivalSoundVolume);
+
+	if (BossMusic.IsNull())
+	{
+		return;
+	}
+
+	// The boss theme starts when the arrival sound ends. Without a (finite) arrival sound it starts at once.
+	float DelaySeconds = 0.0f;
+	if (const USoundBase* Arrival = GrantMoneyAudio::Resolve(ArrivalSound))
+	{
+		const float Duration = Arrival->GetDuration();
+		DelaySeconds = Duration < INDEFINITELY_LOOPING_DURATION ? FMath::Max(Duration, 0.0f) : 0.0f;
+	}
+
+	UWorld* World = GetWorld();
+	if (World && DelaySeconds > UE_KINDA_SMALL_NUMBER)
+	{
+		World->GetTimerManager().SetTimer(BossMusicTimer, this, &ABossEncounter::StartBossMusic, DelaySeconds, false);
+	}
+	else
+	{
+		StartBossMusic();
+	}
+}
+
+void ABossEncounter::StartBossMusic()
+{
+	if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+	{
+		Audio->PlayMusic(BossMusic, BossMusicFadeInSeconds);
 	}
 }
 

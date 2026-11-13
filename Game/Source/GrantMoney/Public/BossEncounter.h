@@ -11,6 +11,7 @@
 class AEnemyBase;
 class AEnemySpawner;
 class UHealthComponent;
+class USoundBase;
 
 UENUM(BlueprintType)
 enum class EBossEncounterState : uint8
@@ -80,6 +81,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|UI", meta = (ClampMin = "0.0", Units = "s"))
 	float ArrivalMessageSeconds = 4.0f;
 
+	// Played (not positioned) when the boss appears, after the level music is stopped. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio")
+	TSoftObjectPtr<USoundBase> ArrivalSound;
+
+	// How loud the arrival sound is. Above 1 makes it stand out over the other sounds.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float ArrivalSoundVolume = 1.3f;
+
+	// Starts once the arrival sound has finished, and plays until the run ends. Turn on Looping in the Sound
+	// Wave so it repeats. Empty means there is no music during the fight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio")
+	TSoftObjectPtr<USoundBase> BossMusic;
+
+	// Seconds the level music takes to fade out when the boss appears.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio", meta = (ClampMin = "0.0", Units = "s"))
+	float LevelMusicFadeOutSeconds = 0.4f;
+
+	// Seconds the boss music takes to fade in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Audio", meta = (ClampMin = "0.0", Units = "s"))
+	float BossMusicFadeInSeconds = 1.0f;
+
 	// Listens to the run for BossPhase and for the end of the run. Safe to call again with the same run.
 	// If the run is already in BossPhase, the fight starts now.
 	void BindToRunController(ARunController* InRunController);
@@ -131,6 +153,10 @@ private:
 
 	void BeginEncounter();
 	void CancelPendingWork();
+
+	// Stops the level music, plays the arrival sound, then (once it has finished) starts the boss music.
+	void StartBossAudio();
+	void StartBossMusic();
 	AEnemySpawner* ResolveSpawner();
 
 	EBossEncounterState State = EBossEncounterState::Waiting;
@@ -145,6 +171,7 @@ private:
 	TWeakObjectPtr<AEnemyBase> Boss;
 
 	FTimerHandle RetryTimer;
+	FTimerHandle BossMusicTimer;
 	int32 SpawnAttempts = 0;
 	int32 BossSpawnCount = 0;
 	double ArrivalTime = -1.0;

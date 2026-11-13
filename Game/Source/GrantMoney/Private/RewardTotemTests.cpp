@@ -8,6 +8,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "RewardTotem.h"
+#include "RewardTotemSpawner.h"
 #include "TemporaryEffect.h"
 #include "TemporaryEffectComponent.h"
 #include "Tests/TemporaryEffectTestScene.h"
@@ -135,6 +136,9 @@ bool FRewardTotemActivateTest::RunTest(const FString& Parameters)
         UStatModifierEffect* Speed = TotemTest::SpeedEffect(Config);
         Speed->bPermanent = false;
         Speed->Duration = 2.0f;
+
+        // A totem's rewards default to no glow; a timed reward can still opt in to one.
+        Speed->bShowAura = true;
     });
     if (!TestNotNull(TEXT("Totem spawned"), Totem))
     {
@@ -515,6 +519,31 @@ bool FRewardTotemCustomLookTest::RunTest(const FString& Parameters)
         FMath::IsNearlyEqual(PillarOf(MeshOnly)->GetRelativeLocation().Z, 100.0, 0.5));
 
     TestTrue(TEXT("Custom material used"), PillarOf(WithMaterial)->GetMaterial(0) == Material);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FTotemRewardsDoNotGlowTest,
+    "GrantMoney.Rewards.Totem.PermanentRewardsDoNotGlowOnThePlayer",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTotemRewardsDoNotGlowTest::RunTest(const FString& Parameters)
+{
+    const ARewardTotem* Totem = GetDefault<ARewardTotem>();
+    TestTrue(TEXT("The default totem has a reward"), Totem->Effects.Num() > 0);
+    for (const UTemporaryEffect* Effect : Totem->Effects)
+    {
+        TestTrue(TEXT("The totem reward is permanent"), Effect && Effect->bPermanent);
+        TestFalse(TEXT("A permanent totem reward does not leave a glow on the player"), Effect && Effect->bShowAura);
+    }
+
+    const ARewardTotemSpawner* Spawner = GetDefault<ARewardTotemSpawner>();
+    TestTrue(TEXT("The spawner has a random reward pool"), Spawner->RandomEffectPool.Num() > 0);
+    for (const UTemporaryEffect* Effect : Spawner->RandomEffectPool)
+    {
+        TestFalse(TEXT("A random pool reward does not leave a glow on the player"), Effect && Effect->bShowAura);
+    }
+
     return true;
 }
 

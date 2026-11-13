@@ -3,6 +3,7 @@
 #include "RewardTotem.h"
 
 #include "Camera/PlayerCameraManager.h"
+#include "Components/AudioComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/CollisionProfile.h"
 #include "Engine/StaticMesh.h"
@@ -10,6 +11,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GrantMoneyAudioSubsystem.h"
 #include "GrantMoneyPlayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -103,6 +105,9 @@ ARewardTotem::ARewardTotem()
 	SpeedBoost->ModifierOp = EGrantMoneyStatModifierOp::Multiplicative;
 	SpeedBoost->Magnitude = 0.1f;
 	SpeedBoost->bPermanent = true;
+
+	// A permanent reward would otherwise glow on the player for the rest of the run.
+	SpeedBoost->bShowAura = false;
 	SpeedBoost->StackKey = TEXT("Totem.MoveSpeed");
 	SpeedBoost->DisplayName = NSLOCTEXT("GrantMoney", "SwiftTotemBuff", "Swiftness");
 	Effects.Add(SpeedBoost);
@@ -182,6 +187,7 @@ void ARewardTotem::AdvanceCharge(float DeltaSeconds)
 	}
 
 	APawn* Activator = FindActivator();
+	bFilling = Activator != nullptr;
 	const float Step = DeltaSeconds / FMath::Max(ChargeSeconds, UE_KINDA_SMALL_NUMBER);
 	ChargeProgress = FMath::Clamp(ChargeProgress + (Activator ? Step : -Step * DrainRate), 0.0f, 1.0f);
 	UpdateBar();
@@ -259,6 +265,7 @@ int32 ARewardTotem::Activate(AActor* Activator)
 	}
 
 	ChargeProgress = 0.0f;
+	bFilling = false;
 	if (bSingleUse)
 	{
 		SetState(ERewardTotemState::Spent);
@@ -288,8 +295,71 @@ void ARewardTotem::SetState(ERewardTotemState NewState)
 	SetActorTickEnabled(State != ERewardTotemState::Spent);
 }
 
+float ARewardTotem::ComputeChargeSoundTime(float Progress, float ChargeSeconds)
+{
+	return FMath::Clamp(Progress, 0.0f, 1.0f) * FMath::Max(ChargeSeconds, 0.0f);
+}
+
+void ARewardTotem::UpdateChargeSound()
+{
+	const bool bCharging = State == ERewardTotemState::Ready && bFilling && ChargeProgress < 1.0f;
+	if (bCharging == bHoldingChargeFeedback)
+	{
+		return;
+	}
+
+	// Only the moment charging starts or stops matters. A sound shorter than the charge simply ends rather
+	// than being started over every frame.
+	bHoldingChargeFeedback = bCharging;
+
+	if (UGrantMoneyAudioSubsystem* Audio = UGrantMoneyAudioSubsystem::Get(this))
+	{
+		if (bCharging)
+		{
+			Audio->AcquireMusicDuck(this);
+		}
+		else
+		{
+			Audio->ReleaseMusicDuck(this);
+		}
+	}
+
+	if (!ChargeSound)
+	{
+		return;
+	}
+
+	if (bCharging)
+	{
+		// Picks the sound up at the point matching the bar, so stepping back on after a partial drain continues
+		// from there, and a fully drained bar starts it from the beginning.
+		ChargeAudio = UGameplayStatics::SpawnSoundAtLocation(this, ChargeSound, GetActorLocation(), FRotator::ZeroRotator,
+			1.0f, 1.0f, ComputeChargeSoundTime(ChargeProgress, ChargeSeconds));
+	}
+	else
+	{
+		if (IsValid(ChargeAudio))
+		{
+			ChargeAudio->FadeOut(0.1f, 0.0f);
+		}
+
+		ChargeAudio = nullptr;
+	}
+}
+
+void ARewardTotem::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Stops the music duck and the charge sound if the totem goes away mid-charge.
+	bFilling = false;
+	UpdateChargeSound();
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void ARewardTotem::UpdateBar()
 {
+	UpdateChargeSound();
+
 	const bool bShow = State == ERewardTotemState::Ready && ChargeProgress > 0.0f;
 	BarPivot->SetVisibility(bShow, true);
 	if (!bShow)

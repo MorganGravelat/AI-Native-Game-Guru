@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "ContactDamageComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -385,6 +386,7 @@ bool FBossSlimeLeadsMovingTargetTest::RunTest(const FString& Parameters)
         const FVector Offset = BossSlimeTest::OpenPlayer - BossSlimeTest::OpenBoss; // (500, 0, 0)
         const FVector TargetVelocity(0.0, 500.0, 0.0);
         Scene.Boss->TestTargetVelocity = TargetVelocity;
+        Scene.Boss->FirstDashLeadStrength = Scene.Boss->LungeLeadStrength;
 
         Scene.Step(1, 0.25f);
         TestTrue(TEXT("Winding up"), Scene.Boss->GetLungeState().IsWindingUp());
@@ -423,6 +425,7 @@ bool FBossSlimeLeadsMovingTargetTest::RunTest(const FString& Parameters)
         const FVector Offset = BossSlimeTest::OpenPlayer - BossSlimeTest::OpenBoss;
         const FVector TargetVelocity(0.0, 500.0, 0.0);
         Scene.Boss->LungeLeadStrength = 1.0f;
+        Scene.Boss->FirstDashLeadStrength = 1.0f;
         Scene.Boss->TestTargetVelocity = TargetVelocity;
         Scene.Step(1, 0.25f);
 
@@ -443,6 +446,86 @@ bool FBossSlimeLeadsMovingTargetTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("A stationary target gets the plain straight-line aim"), Scene.Boss->GetLungeDirection().Equals(FVector::ForwardVector, 0.01f));
     }
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FBossSlimeSquishesForLungeTest,
+    "GrantMoney.Boss.Slime.BodySquashesInWindupAndStretchesInLunge",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBossSlimeSquishesForLungeTest::RunTest(const FString& Parameters)
+{
+    TestTrue(TEXT("The boss squishes like a slime by default"), GetDefault<ABossSlimeEnemy>()->bSquishWhileMoving);
+
+    BossSlimeTest::FScene Scene;
+    if (!Scene.Create(*this, BossSlimeTest::OpenBoss, BossSlimeTest::OpenPlayer))
+    {
+        return false;
+    }
+
+    UStaticMeshComponent* Mesh = Scene.Boss->FindComponentByClass<UStaticMeshComponent>();
+    if (!TestNotNull(TEXT("The boss has a mesh"), Mesh))
+    {
+        return false;
+    }
+
+    const FVector Base = Mesh->GetRelativeScale3D();
+
+    // Windup (1 s): the body sinks flatter and wider.
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        Scene.Boss->Tick(0.25f);
+    }
+
+    TestTrue(TEXT("Winding up"), Scene.Boss->GetLungeState().IsWindingUp());
+    TestTrue(TEXT("Flatter while charging up"), Mesh->GetRelativeScale3D().Z < Base.Z * 0.95);
+    TestTrue(TEXT("Wider while charging up"), Mesh->GetRelativeScale3D().X > Base.X);
+
+    // The charge: the body springs taller and thinner.
+    for (int32 Index = 0; Index < 2; ++Index)
+    {
+        Scene.Boss->Tick(0.25f);
+    }
+
+    TestTrue(TEXT("Charging"), Scene.Boss->GetLungeState().IsLunging());
+    TestTrue(TEXT("Taller while charging"), Mesh->GetRelativeScale3D().Z > Base.Z * 1.05);
+    TestTrue(TEXT("Thinner while charging"), Mesh->GetRelativeScale3D().X < Base.X);
+
+    // Death leaves the body at its normal shape instead of frozen mid-squish.
+    Scene.Boss->GetHealth()->ApplyDamage(100000.0f, Scene.Player);
+    TestTrue(TEXT("Back to the normal shape on death"), Mesh->GetRelativeScale3D().Equals(Base, 0.001));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FBossSlimeFirstDashAimsDirectlyTest,
+    "GrantMoney.Boss.Slime.FirstDashAimsDirectlyLaterDashesLead",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBossSlimeFirstDashAimsDirectlyTest::RunTest(const FString& Parameters)
+{
+    TestEqual(TEXT("The first dash does not lead by default"), GetDefault<ABossSlimeEnemy>()->FirstDashLeadStrength, 0.0f);
+
+    BossSlimeTest::FScene Scene;
+    if (!Scene.Create(*this, BossSlimeTest::OpenBoss, BossSlimeTest::OpenPlayer))
+    {
+        return false;
+    }
+
+    ATestBossSlime* Boss = Scene.Boss;
+    Boss->LungeComboCount = 2;
+    Boss->TestTargetVelocity = FVector(0.0, 500.0, 0.0);
+
+    // Dash 1: the target is moving north, but the dash aims straight at where it stands (due east).
+    Scene.Step(1, 0.25f);
+    TestTrue(TEXT("Winding up"), Boss->GetLungeState().IsWindingUp());
+    TestTrue(TEXT("The first dash aims straight at the target, ignoring its velocity"), Boss->GetLungeDirection().Equals(FVector::ForwardVector, 0.01f));
+
+    // Dash 2: leads the moving target (+Y), as LungeLeadStrength says.
+    Scene.Step(6, 0.25f);
+    TestEqual(TEXT("It is the second dash"), Boss->GetLungeState().ComboIndex, 1);
+    TestTrue(TEXT("The second dash leads the target"), Boss->GetLungeDirection().Y > 0.05f);
     return true;
 }
 

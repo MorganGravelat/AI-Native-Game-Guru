@@ -8,6 +8,7 @@
 #include "StarterWeaponComponent.generated.h"
 
 class AMagicOrbProjectile;
+class USoundBase;
 
 /**
  * The player's starter weapon: fires a magic orb at the nearest living enemy in range,
@@ -119,6 +120,10 @@ public:
 	// Seconds before an orb that hit nothing removes itself. Also limits its reach to Speed x Lifetime.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (ClampMin = "0.05", Units = "s"))
 	float ProjectileLifetime = 2.0f;
+
+	// Played (not positioned) for every orb fired, including each orb of a volley. Empty for silence.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Audio")
+	TSoftObjectPtr<USoundBase> FireSound;
 
 protected:
 	virtual void BeginPlay() override;

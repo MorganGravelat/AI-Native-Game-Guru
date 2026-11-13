@@ -14,6 +14,7 @@
 #include "GameFramework/DamageType.h"
 #include "GameFramework/PlayerController.h"
 #include "GrantMoneyCharacterVisualData.h"
+#include "GrantMoneyAudio.h"
 #include "HAL/IConsoleManager.h"
 #include "HealthComponent.h"
 #include "InputAction.h"
@@ -81,6 +82,9 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 {
 	// Ticks only to choose between the idle and jog animations.
 	PrimaryActorTick.bCanEverTick = true;
+
+	HurtSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Player/PlayerHit.PlayerHit"));
+	LevelUpSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Player/LevelUp.LevelUp"));
 
 	// Movement is relative to the camera, so the controller's rotation must not turn the character.
 	bUseControllerRotationPitch = false;
@@ -177,6 +181,7 @@ void AGrantMoneyPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	Health->OnDeath.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleHealthDepleted);
+	Health->OnHealthChanged.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleHealthChanged);
 	LevelComponent->OnLevelUp.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleLevelGained);
 	UpgradeComponent->OnChoiceReady.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleUpgradeChoiceReady);
 	UpgradeComponent->OnChoicesResolved.AddUniqueDynamic(this, &AGrantMoneyPlayerCharacter::HandleUpgradeChoicesResolved);
@@ -212,8 +217,18 @@ void AGrantMoneyPlayerCharacter::HandleHealthDepleted(UHealthComponent* Depleted
 	}
 }
 
+void AGrantMoneyPlayerCharacter::HandleHealthChanged(UHealthComponent* ChangedHealth, float NewHealth, float Delta)
+{
+	// Dying is covered by the game over sound instead.
+	if (Delta < 0.0f && NewHealth > 0.0f)
+	{
+		GrantMoneyAudio::Play2D(this, HurtSound);
+	}
+}
+
 void AGrantMoneyPlayerCharacter::HandleLevelGained(int32 NewLevel, int32 PreviousLevel)
 {
+	GrantMoneyAudio::Play2D(this, LevelUpSound);
 	UpgradeComponent->NotifyLevelGained();
 }
 

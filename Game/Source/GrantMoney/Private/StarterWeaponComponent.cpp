@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "EnemyBase.h"
 #include "GameFramework/Pawn.h"
+#include "GrantMoneyAudio.h"
 #include "HealthComponent.h"
 #include "MagicOrbProjectile.h"
 #include "StatsComponent.h"
@@ -43,6 +44,7 @@ UStarterWeaponComponent::UStarterWeaponComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 
 	ProjectileClass = AMagicOrbProjectile::StaticClass();
+	FireSound = GrantMoneyAudio::DefaultSound(TEXT("/Game/Sound/Weapon/FireBolt.FireBolt"));
 }
 
 void UStarterWeaponComponent::BeginPlay()
@@ -148,6 +150,7 @@ AMagicOrbProjectile* UStarterWeaponComponent::FireAt(AActor* Target)
 	Orb->Launch(Direction, ProjectileSpeed, GetEffectiveDamage(), ProjectileLifetime, GetEffectivePenetration(), GetEffectiveExplosionRadius());
 	Orb->FinishSpawning(SpawnTransform);
 
+	GrantMoneyAudio::Play2D(this, FireSound);
 	UE_LOG(LogTemp, Log, TEXT("StarterWeapon: %s fired an orb at %s."), *GetNameSafe(Owner), *GetNameSafe(Target));
 	return Orb;
 }

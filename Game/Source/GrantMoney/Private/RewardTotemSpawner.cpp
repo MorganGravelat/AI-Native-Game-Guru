@@ -34,6 +34,9 @@ ARewardTotemSpawner::ARewardTotemSpawner()
 		Buff->ModifierOp = Op;
 		Buff->Magnitude = Magnitude;
 		Buff->bPermanent = true;
+
+		// A permanent reward would otherwise glow on the player for the rest of the run.
+		Buff->bShowAura = false;
 		Buff->StackKey = FName(*FString::Printf(TEXT("Totem.%s"), Name));
 		Buff->DisplayName = DisplayName;
 		Buff->AuraColor = Color;
