@@ -22,6 +22,17 @@ namespace EffectComponentTest
         Template->StackKey = StackKey;
         return Template;
     }
+
+    UStatModifierEffect* MakePermanentSpeedBuff(float Magnitude, FName StackKey = NAME_None)
+    {
+        UStatModifierEffect* Template = NewObject<UStatModifierEffect>();
+        Template->Stat = EGrantMoneyStat::MoveSpeed;
+        Template->ModifierOp = EGrantMoneyStatModifierOp::Multiplicative;
+        Template->Magnitude = Magnitude;
+        Template->bPermanent = true;
+        Template->StackKey = StackKey;
+        return Template;
+    }
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -197,6 +208,100 @@ bool FTemporaryEffectComponentCleanupTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("No modifiers left behind"), Scene.Stats->GetModifiers().Num(), 0);
     TestEqual(TEXT("The other effect was removed exactly once"), UTestCountingEffect::Removes, 1);
     TestEqual(TEXT("Aura removed"), Scene.AuraLightCount(), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FTemporaryEffectComponentPauseTest,
+    "GrantMoney.Effects.TemporaryEffectComponent.PauseFreezesTheDuration",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTemporaryEffectComponentPauseTest::RunTest(const FString& Parameters)
+{
+    // SCRUM-39: a buff's duration must not drain while the pause menu or a level-up choice holds the
+    // game paused (UTemporaryEffectComponent ticks with bTickEvenWhenPaused = false, the same policy
+    // ARunController and AEnemySpawner use).
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    UTemporaryEffectComponent* Effects = UTemporaryEffectComponent::FindOrAdd(Scene.Player);
+    UTemporaryEffect* Applied = Effects->ApplyEffect(EffectComponentTest::MakeSpeedBuff(0.5f, 5.0f));
+    Scene.Step(1.0f);
+    const float RemainingBeforePause = Effects->GetRemainingSeconds(Applied);
+    TestTrue(TEXT("Some time has passed"), RemainingBeforePause < 5.0f);
+
+    Scene.SetPaused(true);
+    Scene.Step(5.0f);
+    TestEqual(TEXT("A paused world does not advance the buff's timer"), Effects->GetRemainingSeconds(Applied), RemainingBeforePause);
+    TestEqual(TEXT("The stat stays buffed while paused"), Scene.MoveSpeed(), 900.0f);
+
+    Scene.SetPaused(false);
+    Scene.Step(RemainingBeforePause + 0.5f);
+    TestEqual(TEXT("Resumes counting down and expires once unpaused"), Scene.MoveSpeed(), EffectTest::BaseMoveSpeed);
+    TestEqual(TEXT("No effects left"), Effects->GetActiveEffectCount(), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FTemporaryEffectComponentPermanentNeverExpiresTest,
+    "GrantMoney.Effects.TemporaryEffectComponent.PermanentEffectNeverExpiresAndNeedsNoTick",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTemporaryEffectComponentPermanentNeverExpiresTest::RunTest(const FString& Parameters)
+{
+    // Small, permanent totem rewards (SCRUM-39 follow-up): no timer, no expiry, no countdown to show.
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    UTemporaryEffectComponent* Effects = UTemporaryEffectComponent::FindOrAdd(Scene.Player);
+    UTemporaryEffect* Applied = Effects->ApplyEffect(EffectComponentTest::MakePermanentSpeedBuff(0.1f));
+    if (!TestNotNull(TEXT("Applied"), Applied))
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("600 x 1.1"), Scene.MoveSpeed(), 660.0f);
+    TestEqual(TEXT("No countdown to report"), Effects->GetRemainingSeconds(Applied), -1.0f);
+    TestFalse(TEXT("Nothing to tick for: a permanent effect alone needs no clock"), Effects->IsComponentTickEnabled());
+
+    Scene.Step(60.0f);
+    TestEqual(TEXT("Still buffed after a long time"), Scene.MoveSpeed(), 660.0f);
+    TestEqual(TEXT("Still the one effect"), Effects->GetActiveEffectCount(), 1);
+
+    TestTrue(TEXT("Still removable explicitly"), Effects->RemoveEffect(Applied));
+    TestEqual(TEXT("Removed on request"), Scene.MoveSpeed(), EffectTest::BaseMoveSpeed);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FTemporaryEffectComponentPermanentStackKeyIsNoOpTest,
+    "GrantMoney.Effects.TemporaryEffectComponent.PermanentStackKeyRepeatIsANoOp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTemporaryEffectComponentPermanentStackKeyIsNoOpTest::RunTest(const FString& Parameters)
+{
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    UTemporaryEffectComponent* Effects = UTemporaryEffectComponent::FindOrAdd(Scene.Player);
+    UStatModifierEffect* Template = EffectComponentTest::MakePermanentSpeedBuff(0.1f, TEXT("Totem.MoveSpeed"));
+
+    UTemporaryEffect* First = Effects->ApplyEffect(Template);
+    UTemporaryEffect* Second = Effects->ApplyEffect(Template);
+
+    TestTrue(TEXT("Same key: the same permanent effect is returned, not a new one"), First == Second);
+    TestEqual(TEXT("Still one effect"), Effects->GetActiveEffectCount(), 1);
+    TestEqual(TEXT("Not doubled: still just +10%"), Scene.MoveSpeed(), 660.0f);
+    TestEqual(TEXT("One modifier, not two"), Scene.Stats->GetModifiers().Num(), 1);
     return true;
 }
 

@@ -72,10 +72,18 @@ protected:
 	TObjectPtr<UInputAction> CameraZoomAction;
 
 public:
-	// Opens the pause menu if it is closed, closes it if it is open. Does nothing once the Game Over
-	// screen is showing (ShowGameOver) or a level-up choice is active (ShowLevelUpChoice): there is
-	// nothing to pause for in either case.
+	// Opens the pause menu if it is closed, closes it if it is open. Does nothing once the run is
+	// finished (Won, Lost or a result screen showing) or while a level-up choice is active: there is
+	// nothing to pause for in either case, and the other screen owns the cursor and input mode.
 	void TogglePauseMenu();
+
+	// What the pause menu's Resume button calls: closes the menu and unpauses, unless the run has finished
+	// or a level-up choice needs the pause, in which case nothing changes.
+	void ResumeFromPauseMenu();
+
+	// True once the run is Won or Lost, or the Game Over / Victory screen has been shown. From then on only
+	// Restart and Quit leave the paused result screen.
+	bool IsRunFinished() const;
 
 	// Closes the pause menu if it is open, shows the Game Over screen with SurvivalSeconds and
 	// Experience, pauses the game (same mechanism as the pause menu: it also stops the player's
@@ -94,7 +102,8 @@ public:
 	// again while already showing (for example the second of several queued choices): it just refreshes.
 	void ShowLevelUpChoice(UUpgradeComponent* InUpgrades);
 
-	// Hides the level-up choice screen (if showing) and unpauses. Called once the whole queue of
+	// Hides the level-up choice screen (if showing) and unpauses, unless the run has finished meanwhile, in
+	// which case the result screen keeps the pause and the input mode. Called once the whole queue of
 	// pending choices has been answered (UUpgradeComponent::OnChoicesResolved).
 	void HideLevelUpChoice();
 
@@ -108,6 +117,14 @@ private:
 	void HandleCameraTurn(const FInputActionValue& Value);
 	void HandleCameraLookUp(const FInputActionValue& Value);
 	void HandleCameraZoom(const FInputActionValue& Value);
+
+	// Viewport layers: the gameplay HUD sits at 0 (ARunHUD), and each screen that takes over input sits above it.
+	static constexpr int32 PauseMenuZOrder = 50;
+	static constexpr int32 LevelUpZOrder = 60;
+	static constexpr int32 ResultZOrder = 70;
+
+	// Set when a result screen is requested; never cleared, because a finished run cannot continue.
+	bool bResultShown = false;
 
 	// The view-target camera pawn, or null if the view target is not a camera pawn
 	// or is the possessed pawn (which then handles its own input).

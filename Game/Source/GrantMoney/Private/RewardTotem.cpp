@@ -31,10 +31,15 @@ namespace
 	constexpr double BarThickness = 4.0;
 	constexpr double BarTall = 14.0;
 
-	const FLinearColor BarBackgroundColor(0.02f, 0.02f, 0.02f);
-
 	// How bright the range disc is compared with the pillar.
 	constexpr float DiscBrightness = 0.35f;
+
+	// Both GlowMaterial (EmissiveMeshMaterial) and BarMaterial (BasicShapeMaterial) expose their colour as
+	// a vector parameter named "Color", not "EmissiveColor" as this file used to assume. The wrong name
+	// was a silent no-op (UMaterialInstanceDynamic does not warn on an unknown parameter), so every glow
+	// here used to keep its master material's flat default look instead of being tinted. Confirmed
+	// against the materials' actual exposed parameters.
+	const FName GlowColorParameterName(TEXT("Color"));
 
 	void DisableCollision(UStaticMeshComponent* Mesh)
 	{
@@ -54,9 +59,11 @@ ARewardTotem::ARewardTotem()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeFinder(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> GlowFinder(TEXT("/Engine/EngineMaterials/EmissiveMeshMaterial.EmissiveMeshMaterial"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BarFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	UStaticMesh* Cylinder = CylinderFinder.Succeeded() ? CylinderFinder.Object : nullptr;
 	UStaticMesh* Cube = CubeFinder.Succeeded() ? CubeFinder.Object : nullptr;
 	GlowMaterial = GlowFinder.Succeeded() ? GlowFinder.Object : nullptr;
+	BarMaterial = BarFinder.Succeeded() ? BarFinder.Object : nullptr;
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = SceneRoot;
@@ -89,12 +96,13 @@ ARewardTotem::ARewardTotem()
 
 	ActivatorClass = AGrantMoneyPlayerCharacter::StaticClass();
 
-	// The proof-of-concept reward: +50% move speed for 8 s. Two totems refresh the timer rather than stack.
+	// The default reward: a small, permanent +10% move speed. Two totems of the same StackKey are a
+	// no-op (already permanent), not a second application.
 	UStatModifierEffect* SpeedBoost = CreateDefaultSubobject<UStatModifierEffect>(TEXT("MoveSpeedBoost"));
 	SpeedBoost->Stat = EGrantMoneyStat::MoveSpeed;
 	SpeedBoost->ModifierOp = EGrantMoneyStatModifierOp::Multiplicative;
-	SpeedBoost->Magnitude = 0.5f;
-	SpeedBoost->Duration = 8.0f;
+	SpeedBoost->Magnitude = 0.1f;
+	SpeedBoost->bPermanent = true;
 	SpeedBoost->StackKey = TEXT("Totem.MoveSpeed");
 	SpeedBoost->DisplayName = NSLOCTEXT("GrantMoney", "SwiftTotemBuff", "Swiftness");
 	Effects.Add(SpeedBoost);
@@ -110,8 +118,8 @@ void ARewardTotem::BeginPlay()
 
 	BarPivot->SetRelativeLocation(FVector(0.0, 0.0, BarHeight));
 	BarBackground->SetRelativeScale3D(FVector(BarThickness / ShapeSize, BarLength / ShapeSize, BarTall / ShapeSize));
-	MakeGlow(BarBackground, BarBackgroundColor);
-	MakeGlow(BarFill, BarColor);
+	MakeBarSegment(BarBackground, BarBackgroundColor);
+	MakeBarSegment(BarFill, BarColor);
 
 	// A custom totem keeps its own materials; only the default pillar is tinted.
 	const bool bCustomLook = ApplyCustomLook();
@@ -315,12 +323,12 @@ void ARewardTotem::ApplyColors()
 
 	if (TotemGlow)
 	{
-		TotemGlow->SetVectorParameterValue(TEXT("EmissiveColor"), Color);
+		TotemGlow->SetVectorParameterValue(GlowColorParameterName, Color);
 	}
 
 	if (DiscGlow)
 	{
-		DiscGlow->SetVectorParameterValue(TEXT("EmissiveColor"), Color * DiscBrightness);
+		DiscGlow->SetVectorParameterValue(GlowColorParameterName, Color * DiscBrightness);
 	}
 
 	RangeDisc->SetVisibility(State != ERewardTotemState::Spent);
@@ -334,7 +342,22 @@ UMaterialInstanceDynamic* ARewardTotem::MakeGlow(UStaticMeshComponent* Mesh, con
 	}
 
 	UMaterialInstanceDynamic* Glow = UMaterialInstanceDynamic::Create(GlowMaterial, this);
-	Glow->SetVectorParameterValue(TEXT("EmissiveColor"), Color);
+	Glow->SetVectorParameterValue(GlowColorParameterName, Color);
 	Mesh->SetMaterial(0, Glow);
 	return Glow;
+}
+
+UMaterialInstanceDynamic* ARewardTotem::MakeBarSegment(UStaticMeshComponent* Mesh, const FLinearColor& Color)
+{
+	if (!BarMaterial || !Mesh)
+	{
+		return nullptr;
+	}
+
+	// BasicShapeMaterial ("Color", Opaque, Lit): unlike GlowMaterial it actually occludes, so the bar's
+	// two segments read as solid blocks instead of both show-through glows over whatever is behind them.
+	UMaterialInstanceDynamic* Segment = UMaterialInstanceDynamic::Create(BarMaterial, this);
+	Segment->SetVectorParameterValue(GlowColorParameterName, Color);
+	Mesh->SetMaterial(0, Segment);
+	return Segment;
 }

@@ -22,6 +22,8 @@ struct GRANTMONEY_API FActiveTemporaryEffect
 	UPROPERTY()
 	TObjectPtr<UTemporaryEffect> Effect;
 
+	// -1 for a permanent effect (Effect->bPermanent): nothing to count down, and GetRemainingSeconds
+	// reports it as such instead of a real number.
 	float RemainingSeconds = 0.0f;
 
 	UPROPERTY()
@@ -36,12 +38,15 @@ struct GRANTMONEY_API FActiveTemporaryEffect
 
 /**
  * Runs an actor's temporary effects (SCRUM-39): starts each one, counts down its Duration, shows its
- * aura, and removes it when the time is up. Every effect still running is removed when this component
- * or its owner goes away, so a buff can never outlive its timer.
+ * aura, and removes it when the time is up. Every timed effect still running is removed when this
+ * component or its owner goes away, so a buff can never outlive its timer. A bPermanent effect (see
+ * UTemporaryEffect) is never counted down or auto-removed by this component; it is removed only by an
+ * explicit RemoveEffect/RemoveAllEffects call, or implicitly when the owner is destroyed (a run restart).
  *
  * Nothing needs to add this component ahead of time: FindOrAdd creates it on the target the first time
  * an effect is applied (ARewardTotem does this), so the player character does not change. Ticks only
- * while an effect is running, and pauses with the game, so a buff does not drain on the level-up screen.
+ * while a timed effect is running (a permanent one alone needs no tick), and pauses with the game, so a
+ * buff does not drain on the level-up screen.
  */
 UCLASS(ClassGroup = (Combat), meta = (BlueprintSpawnableComponent))
 class GRANTMONEY_API UTemporaryEffectComponent : public UActorComponent
@@ -55,7 +60,8 @@ public:
 	static UTemporaryEffectComponent* FindOrAdd(AActor* Owner);
 
 	// Starts a copy of Template on the owner. Template itself is not changed. If an effect with the same
-	// non-None StackKey is running, its timer restarts instead and that effect is returned.
+	// non-None StackKey is running, a timed one's timer restarts instead and that effect is returned; a
+	// permanent one is simply returned unchanged, since it is already applied for good.
 	// Returns null if the copy refused to apply (e.g. the owner has no Stats component).
 	UFUNCTION(BlueprintCallable, Category = "Effects")
 	UTemporaryEffect* ApplyEffect(const UTemporaryEffect* Template);
@@ -67,13 +73,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Effects")
 	void RemoveAllEffects();
 
-	// Counts timers down by DeltaSeconds and removes expired effects. Called by TickComponent.
+	// Counts timers down by DeltaSeconds and removes expired effects. Permanent effects are skipped
+	// entirely: they have no timer to advance and never expire this way. Called by TickComponent.
 	void AdvanceEffects(float DeltaSeconds);
 
 	UFUNCTION(BlueprintPure, Category = "Effects")
 	int32 GetActiveEffectCount() const { return ActiveEffects.Num(); }
 
-	// Seconds left on Effect, or 0 if it is not running here.
+	// Seconds left on Effect, 0 if it is not running here, or -1 if it is running but permanent (no
+	// countdown to report).
 	UFUNCTION(BlueprintPure, Category = "Effects")
 	float GetRemainingSeconds(const UTemporaryEffect* Effect) const;
 
@@ -99,6 +107,7 @@ private:
 	// Removes ActiveEffects[Index], undoes the effect, hides its aura and broadcasts OnEffectEnded.
 	void EndEffectAt(int32 Index);
 
+	// True if any active effect is timed (not bPermanent): that is the only reason to keep ticking.
 	void UpdateTickState();
 
 	UPROPERTY(Transient)

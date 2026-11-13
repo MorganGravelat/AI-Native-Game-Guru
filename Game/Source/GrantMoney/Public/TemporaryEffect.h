@@ -12,9 +12,10 @@ class UNiagaraSystem;
 class UStatsComponent;
 
 /**
- * The reusable contract for a timed buff or debuff (SCRUM-39). An effect only says what it does to
- * its target while it is active; UTemporaryEffectComponent owns the timer, the visible aura and the
- * clean-up, so a new effect type needs nothing from the player, its movement or the camera.
+ * The reusable contract for a timed (or, with bPermanent, untimed) buff or debuff (SCRUM-39). An effect
+ * only says what it does to its target while it is active; UTemporaryEffectComponent owns the timer (if
+ * any), the visible aura and the clean-up, so a new effect type needs nothing from the player, its
+ * movement or the camera.
  *
  * To add a new type, derive from this class (C++ or Blueprint) and implement ApplyEffect and
  * RemoveEffect. RemoveEffect must undo everything ApplyEffect did. UStatModifierEffect is the
@@ -43,12 +44,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Effect")
 	AActor* GetTarget() const { return AppliedTarget.Get(); }
 
-	// How long one application lasts, in seconds.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (ClampMin = "0.05", Units = "s"))
+	// How long one application lasts, in seconds. Ignored when bPermanent is set.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect", meta = (ClampMin = "0.05", Units = "s", EditCondition = "!bPermanent"))
 	float Duration = 8.0f;
 
+	// On: this effect is never removed by a timer (Duration is ignored) and has no countdown to show;
+	// UTemporaryEffectComponent keeps it applied until RemoveEffect/RemoveAllEffects is called explicitly
+	// (for example, the player character being destroyed on a run restart). Small, permanent totem
+	// rewards use this so a run's choices compound instead of fading; a genuinely temporary buff (a
+	// totem could still offer one, or a future timed pickup) leaves this off.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
+	bool bPermanent = false;
+
 	// Applying an effect while one with the same key is active restarts that one's timer instead of
-	// stacking a second copy. None = every application stacks.
+	// stacking a second copy (or, for a bPermanent effect, is simply a no-op: it is already applied for
+	// good). None = every application stacks.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect")
 	FName StackKey;
 

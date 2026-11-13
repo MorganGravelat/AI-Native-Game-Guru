@@ -131,6 +131,32 @@ int32 UUpgradeComponent::GetStackCount(FName Id) const
 	return Found ? *Found : 0;
 }
 
+TArray<FGrantMoneyPickedUpgrade> UUpgradeComponent::GetPickedUpgrades() const
+{
+	TArray<FGrantMoneyPickedUpgrade> Picked;
+	for (const FName Id : PickOrder)
+	{
+		FGrantMoneyPickedUpgrade Entry;
+		Entry.Id = Id;
+		Entry.Stacks = GetStackCount(Id);
+		Entry.DisplayName = FText::FromName(Id);
+
+		// The definition list is editable, so an Id that is no longer listed still shows by its Id.
+		if (const FGrantMoneyUpgradeDefinition* Def = AvailableUpgrades.FindByPredicate([Id](const FGrantMoneyUpgradeDefinition& D) { return D.Id == Id; }))
+		{
+			Entry.MaxStacks = Def->MaxStacks;
+			if (!Def->DisplayName.IsEmpty())
+			{
+				Entry.DisplayName = Def->DisplayName;
+			}
+		}
+
+		Picked.Add(Entry);
+	}
+
+	return Picked;
+}
+
 void UUpgradeComponent::NotifyLevelGained()
 {
 	++PendingChoices;
@@ -205,6 +231,7 @@ bool UUpgradeComponent::ChooseUpgrade(int32 Index)
 	--PendingChoices;
 	bChoiceActive = false;
 	CurrentOptions.Reset();
+	OnUpgradeChosen.Broadcast();
 
 	// Still paused (or about to be): PresentNextChoice either rolls the next queued choice (OnChoiceReady
 	// fires again, same pause) or, if the queue is now empty, resolves (OnChoicesResolved fires once).
@@ -215,6 +242,7 @@ bool UUpgradeComponent::ChooseUpgrade(int32 Index)
 void UUpgradeComponent::ApplyUpgrade(const FGrantMoneyUpgradeDefinition& Upgrade)
 {
 	StackCounts.FindOrAdd(Upgrade.Id)++;
+	PickOrder.AddUnique(Upgrade.Id);
 
 	if (Stats)
 	{

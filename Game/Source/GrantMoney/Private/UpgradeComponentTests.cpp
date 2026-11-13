@@ -260,4 +260,65 @@ bool FUpgradeComponentDeterministicSeedTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FUpgradeComponentPickedHistoryTest,
+    "GrantMoney.Progression.UpgradeComponent.PickedUpgradesListInPickOrderWithStacks",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FUpgradeComponentPickedHistoryTest::RunTest(const FString& Parameters)
+{
+    UpgradeTest::FScene Scene;
+    if (!Scene.Create(*this))
+    {
+        return false;
+    }
+
+    Scene.Upgrades->OnUpgradeChosen.AddDynamic(Scene.Listener, &UProgressionTestListener::OnUpgradeChosen);
+
+    FGrantMoneyUpgradeDefinition A;
+    A.Id = TEXT("Alpha");
+    A.DisplayName = FText::FromString(TEXT("Alpha Boost"));
+    A.Stat = EGrantMoneyStat::Damage;
+    A.MaxStacks = 3;
+
+    FGrantMoneyUpgradeDefinition B;
+    B.Id = TEXT("Beta");
+    B.DisplayName = FText::FromString(TEXT("Beta Boost"));
+    B.Stat = EGrantMoneyStat::MoveSpeed;
+    B.MaxStacks = 0;
+
+    Scene.Upgrades->AvailableUpgrades = { A, B };
+    Scene.Upgrades->OptionsPerChoice = 2;
+    TestEqual(TEXT("Nothing picked yet"), Scene.Upgrades->GetPickedUpgrades().Num(), 0);
+
+    // Picks by Id so the test does not depend on the shuffled order of the options.
+    auto PickById = [&Scene](FName Id)
+    {
+        Scene.Upgrades->NotifyLevelGained();
+        const TArray<FGrantMoneyUpgradeDefinition>& Options = Scene.Upgrades->GetCurrentOptions();
+        const int32 Index = Options.IndexOfByPredicate([Id](const FGrantMoneyUpgradeDefinition& Def) { return Def.Id == Id; });
+        return Index != INDEX_NONE && Scene.Upgrades->ChooseUpgrade(Index);
+    };
+
+    TestTrue(TEXT("Picked Beta"), PickById(TEXT("Beta")));
+    TestTrue(TEXT("Picked Alpha"), PickById(TEXT("Alpha")));
+    TestTrue(TEXT("Picked Beta again"), PickById(TEXT("Beta")));
+    TestEqual(TEXT("OnUpgradeChosen fired once per pick"), Scene.Listener->UpgradeChosenCount, 3);
+
+    const TArray<FGrantMoneyPickedUpgrade> Picked = Scene.Upgrades->GetPickedUpgrades();
+    if (!TestEqual(TEXT("Two distinct upgrades"), Picked.Num(), 2))
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("First picked comes first"), Picked[0].Id, FName(TEXT("Beta")));
+    TestEqual(TEXT("Beta stacks"), Picked[0].Stacks, 2);
+    TestEqual(TEXT("Beta is unlimited"), Picked[0].MaxStacks, 0);
+    TestEqual(TEXT("Second picked comes second"), Picked[1].Id, FName(TEXT("Alpha")));
+    TestEqual(TEXT("Alpha stacks"), Picked[1].Stacks, 1);
+    TestEqual(TEXT("Alpha stack limit"), Picked[1].MaxStacks, 3);
+    TestEqual(TEXT("Display name comes from the definition"), Picked[1].DisplayName.ToString(), FString(TEXT("Alpha Boost")));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

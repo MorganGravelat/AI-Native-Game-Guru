@@ -4,6 +4,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "MapCameraPlayerController.h"
 
 void UPauseMenuWidget::NativeConstruct()
 {
@@ -33,6 +34,13 @@ void UPauseMenuWidget::HandleResume()
 
     if (!PC)
     {
+        return;
+    }
+
+    // The controller owns the pause and input state and refuses to resume a finished run.
+    if (AMapCameraPlayerController* MapPC = Cast<AMapCameraPlayerController>(PC))
+    {
+        MapPC->ResumeFromPauseMenu();
         return;
     }
 

@@ -26,7 +26,6 @@
 #include "RunController.h"
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
-#include "UObject/ConstructorHelpers.h"
 #include "UpgradeComponent.h"
 
 namespace

@@ -6,17 +6,17 @@
 #include "GameFramework/HUD.h"
 #include "RunHUD.generated.h"
 
-class ARunController;
-class ABossEncounter;
+class UGameplayHudWidget;
 
 /**
- * Minimal on-screen readout of the run, drawn straight onto the canvas so it needs no widget assets:
- * the countdown clock, the run state, the player's level and XP progress (ULevelComponent, SCRUM-36)
- * and the spawner's active-enemy count (against its current, difficulty-ramped cap). There is no score
- * line: the character's level is the run's progress readout. During the boss fight it also shows the
- * "Boss Arrived" message, the boss health bar and any boss spawn failure (ABossEncounter).
- * Temporary: the real HUD replaces it, reading the same getters and events.
- * The game mode makes it the player's HUD class.
+ * Owns the gameplay HUD for one local player: creates a single UGameplayHudWidget when it begins play and
+ * removes it when it ends, so there is never a duplicate or an orphan. A restart reloads the level, which
+ * recreates this actor and the widget together. The widget finds and follows the player, run controller and
+ * boss itself; this class only manages its life.
+ *
+ * The widget sits on viewport layer 0, below the pause menu, level-up choice and result screens
+ * (AMapCameraPlayerController gives those higher layers), and ignores the mouse, so those screens keep
+ * their input focus. The game mode makes this the player's HUD class.
  */
 UCLASS()
 class GRANTMONEY_API ARunHUD : public AHUD
@@ -24,22 +24,20 @@ class GRANTMONEY_API ARunHUD : public AHUD
 	GENERATED_BODY()
 
 public:
-	virtual void DrawHUD() override;
+	ARunHUD();
+
+	// The widget while it exists, else null.
+	UGameplayHudWidget* GetGameplayHud() const { return GameplayHud; }
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	// The class to create. Defaults to UGameplayHudWidget; a Blueprint child can restyle it.
+	UPROPERTY(EditAnywhere, Category = "HUD")
+	TSubclassOf<UGameplayHudWidget> GameplayHudClass;
 
 private:
-	// Finds the level's run controller. Looked up again whenever it is missing, because the
-	// game mode may create it after the HUD.
-	ARunController* GetRunController();
-
-	// Same lazy lookup for the boss encounter.
-	ABossEncounter* GetBossEncounter();
-
-	// Boss message, health bar and spawn diagnostic.
-	void DrawBossUi();
-
-	// Draws Text centred on the screen at Y. Returns the height used, so lines can be stacked.
-	float DrawCentredLine(const FString& Text, float Y, float Scale, const FLinearColor& Color);
-
-	TWeakObjectPtr<ARunController> RunController;
-	TWeakObjectPtr<ABossEncounter> BossEncounter;
+	UPROPERTY(Transient)
+	TObjectPtr<UGameplayHudWidget> GameplayHud;
 };
