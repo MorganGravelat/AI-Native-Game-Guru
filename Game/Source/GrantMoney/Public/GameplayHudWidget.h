@@ -14,6 +14,8 @@ class AGrantMoneyPlayerCharacter;
 class UBorder;
 class UCanvasPanel;
 class UProgressBar;
+class UTemporaryEffect;
+class UTemporaryEffectComponent;
 class UTextBlock;
 class UVerticalBox;
 class UWidget;
@@ -24,17 +26,25 @@ class UHealthComponent;
  * It is built entirely in C++ from basic panels, bars and text, so it needs no Blueprint asset.
  *
  * Shows, from the existing gameplay classes:
- *  - top left: level, player health bar (current / max), XP progress bar, then the active temporary
- *    buffs with their remaining time and the upgrades taken so far with their stacks;
- *  - top centre: the survival clock, the run phase (with "(paused)") and the enemy count;
+ *  - top left: level, player health bar (current / max), XP progress bar, then the active totem/reward
+ *    buffs (UTemporaryEffectComponent) — with a remaining time for a timed one, or just its name in gold
+ *    for a permanent one — and the upgrades taken so far with their
+ *    stacks;
+ *  - top centre: the survival clock, the run phase (with "(paused)"), the enemy count, and a brief toast
+ *    naming the stat a newly gained buff changed;
  *  - top right: the score (see FRunHudFormat::ComputeScore: XP earned and time survived);
  *  - during the boss fight: the "Boss Arrived" message, any spawn problem and a boss health bar at the bottom.
  *
  * Values are pushed by events and read once when binding, never recomputed every frame:
  * UHealthComponent::OnHealthChanged and UStatsComponent::OnStatChanged (max health, XP), ULevelComponent::OnLevelUp,
- * UUpgradeComponent::OnUpgradeChosen, UTemporaryBuffComponent::OnBuffsChanged and ARunController::OnTimeChanged /
- * OnStateChanged. Only what has no event is read in the tick: a buff's counting-down time, the pause flag, the
- * boss (it appears and disappears on its own schedule) and the enemy count.
+ * UUpgradeComponent::OnUpgradeChosen and UTemporaryEffectComponent::OnEffectApplied / OnEffectEnded (also the
+ * source of the toast) and ARunController::OnTimeChanged / OnStateChanged. Only what has no event is read in
+ * the tick: a buff's counting-down time, the toast's visible time, the pause flag, the boss (it appears and
+ * disappears on its own schedule) and the enemy count.
+ *
+ * UTemporaryEffectComponent is never added ahead of time by the player (see its own header): binding calls
+ * UTemporaryEffectComponent::FindOrAdd on the player, the same on-demand call ARewardTotem::Activate makes,
+ * so the HUD always has something to listen to without changing the player character.
  *
  * Binding follows the sources, not the other way round: the tick notices a new or missing player pawn (death,
  * respawn, possession change) or run controller and rebinds, removing every old subscription first, so a replaced
@@ -72,6 +82,10 @@ public:
 	FString GetBuffRowText(int32 Index) const;
 	FString GetUpgradeRowText(int32 Index) const;
 
+	// The toast's current text (empty when not showing) and whether it is currently visible.
+	FString GetToastText() const;
+	bool IsToastVisible() const;
+
 	// Refreshes everything from the bound sources.
 	void RefreshAll();
 
@@ -106,6 +120,11 @@ private:
 	void RefreshUpgrades();
 	void RefreshBoss();
 	void RefreshEnemyCount();
+	void RefreshToast(float DeltaTime);
+
+	// Builds and shows the toast naming what Effect changed (a stat and its magnitude for a
+	// UStatModifierEffect, otherwise just its display name), then starts its visible-time countdown.
+	void ShowToast(const UTemporaryEffect* Effect);
 
 	// Shows exactly Count rows in Box (adding rows as needed, collapsing the rest).
 	void EnsureRows(UVerticalBox* Box, TArray<TObjectPtr<UTextBlock>>& Rows, int32 Count);
@@ -123,7 +142,10 @@ private:
 	void HandleUpgradeChosen();
 
 	UFUNCTION()
-	void HandleBuffsChanged();
+	void HandleEffectApplied(UTemporaryEffect* Effect);
+
+	UFUNCTION()
+	void HandleEffectEnded(UTemporaryEffect* Effect);
 
 	UFUNCTION()
 	void HandleRunTimeChanged(float ElapsedSeconds, float RemainingSeconds);
@@ -138,6 +160,12 @@ private:
 
 	// Real seconds until the tick looks again for a run, boss encounter or spawner that does not exist yet.
 	float SourceSearchCooldown = 0.0f;
+
+	// How long the toast stays up after a buff is gained.
+	static constexpr float ToastVisibleSeconds = 3.0f;
+
+	// Counts down from ToastVisibleSeconds while the toast is showing; <= 0 means hidden.
+	float ToastRemainingSeconds = 0.0f;
 
 	TWeakObjectPtr<ARunController> Run;
 	TWeakObjectPtr<AGrantMoneyPlayerCharacter> Player;
@@ -167,6 +195,8 @@ private:
 	TObjectPtr<UTextBlock> EnemyCountText;
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ScoreText;
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ToastText;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> BuffPanel;

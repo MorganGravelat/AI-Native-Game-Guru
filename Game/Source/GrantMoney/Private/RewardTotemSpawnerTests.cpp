@@ -392,7 +392,7 @@ bool FRewardTotemSpawnerDefaultPoolTest::RunTest(const FString& Parameters)
         }
         Stats.Add(Buff->Stat);
         Keys.Add(Buff->StackKey);
-        TestEqual(TEXT("Each lasts 8 s"), Buff->Duration, 8.0f);
+        TestTrue(TEXT("Each is permanent, not timed"), Buff->bPermanent);
     }
 
     TestEqual(TEXT("Four different stats"), Stats.Num(), 4);

@@ -26,7 +26,6 @@
 #include "RunController.h"
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
-#include "TemporaryBuffComponent.h"
 #include "UpgradeComponent.h"
 
 namespace
@@ -114,7 +113,6 @@ AGrantMoneyPlayerCharacter::AGrantMoneyPlayerCharacter()
 	// Turns Experience into a level, and that level into upgrade choices (SCRUM-36).
 	LevelComponent = CreateDefaultSubobject<ULevelComponent>(TEXT("LevelComponent"));
 	UpgradeComponent = CreateDefaultSubobject<UUpgradeComponent>(TEXT("UpgradeComponent"));
-	TemporaryBuffs = CreateDefaultSubobject<UTemporaryBuffComponent>(TEXT("TemporaryBuffs"));
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionFinder(TEXT("/Game/Input/IA_CameraMove.IA_CameraMove"));
 

@@ -13,7 +13,8 @@
 #include "StarterWeaponComponent.h"
 #include "StatsComponent.h"
 #include "Tests/AutomationCommon.h"
-#include "TemporaryBuffComponent.h"
+#include "TemporaryEffect.h"
+#include "TemporaryEffectComponent.h"
 #include "UpgradeComponent.h"
 
 // The HUD's binding and values, end to end with real players and a real run controller. Only the on-screen
@@ -74,6 +75,31 @@ namespace GameplayHudTest
         {
             const UHealthComponent* Health = For->GetHealth();
             return FString::Printf(TEXT("HP  %s"), *FRunHudFormat::FormatHealth(Health->GetHealth(), Health->GetMaxHealth()));
+        }
+
+        // A reusable timed stat buff, the same shape ARewardTotem::Effects holds.
+        static UStatModifierEffect* MakeBuff(FName StackKey, const FText& DisplayName, EGrantMoneyStat Stat, EGrantMoneyStatModifierOp Op, float Magnitude, float Duration)
+        {
+            UStatModifierEffect* Effect = NewObject<UStatModifierEffect>();
+            Effect->StackKey = StackKey;
+            Effect->DisplayName = DisplayName;
+            Effect->Stat = Stat;
+            Effect->ModifierOp = Op;
+            Effect->Magnitude = Magnitude;
+            Effect->Duration = Duration;
+            return Effect;
+        }
+
+        static UStatModifierEffect* MakePermanentBuff(FName StackKey, const FText& DisplayName, EGrantMoneyStat Stat, EGrantMoneyStatModifierOp Op, float Magnitude)
+        {
+            UStatModifierEffect* Effect = NewObject<UStatModifierEffect>();
+            Effect->StackKey = StackKey;
+            Effect->DisplayName = DisplayName;
+            Effect->Stat = Stat;
+            Effect->ModifierOp = Op;
+            Effect->Magnitude = Magnitude;
+            Effect->bPermanent = true;
+            return Effect;
         }
 
         UWorld* World() const { return WorldWrapper.GetTestWorld(); }
@@ -164,24 +190,41 @@ bool FGameplayHudBuffsAndUpgradesTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    UTemporaryBuffComponent* Buffs = Scene.Player->GetTemporaryBuffs();
-    Buffs->AddBuff(TEXT("Surge"), FText::FromString(TEXT("Speed Surge")), EGrantMoneyStat::MoveSpeed, EGrantMoneyStatModifierOp::Multiplicative, 0.5f, 12.0f);
+    UTemporaryEffectComponent* Effects = UTemporaryEffectComponent::FindOrAdd(Scene.Player);
+    Effects->ApplyEffect(GameplayHudTest::FScene::MakeBuff(TEXT("Surge"), FText::FromString(TEXT("Speed Surge")), EGrantMoneyStat::MoveSpeed, EGrantMoneyStatModifierOp::Multiplicative, 0.5f, 12.0f));
     TestEqual(TEXT("One buff row"), Scene.Hud->GetVisibleBuffRowCount(), 1);
     TestEqual(TEXT("Name and time"), Scene.Hud->GetBuffRowText(0), FString(TEXT("Speed Surge  12s")));
 
+    // The toast names the stat gained, flipped so a shorter (faster) attack interval still reads as a gain.
+    TestTrue(TEXT("Toast shows on gain"), Scene.Hud->IsToastVisible());
+    TestEqual(TEXT("Toast names the buff and the stat it changed"), Scene.Hud->GetToastText(), FString(TEXT("Speed Surge  Move Speed +50%")));
+
     // Time passing raises no event; the widget's tick re-reads it, which RefreshAll stands in for here.
-    Buffs->AdvanceBuffs(4.0f);
+    Effects->AdvanceEffects(4.0f);
     Scene.Hud->RefreshAll();
     TestEqual(TEXT("Remaining time counts down"), Scene.Hud->GetBuffRowText(0), FString(TEXT("Speed Surge  8.0s")));
 
-    Buffs->AddBuff(TEXT("Shield"), FText::FromString(TEXT("Shield")), EGrantMoneyStat::MaxHealth, EGrantMoneyStatModifierOp::Additive, 20.0f, 30.0f);
+    Effects->ApplyEffect(GameplayHudTest::FScene::MakeBuff(TEXT("Shield"), FText::FromString(TEXT("Shield")), EGrantMoneyStat::MaxHealth, EGrantMoneyStatModifierOp::Additive, 20.0f, 30.0f));
     TestEqual(TEXT("Two buff rows"), Scene.Hud->GetVisibleBuffRowCount(), 2);
 
-    Buffs->AdvanceBuffs(10.0f);
+    Effects->AdvanceEffects(10.0f);
     TestEqual(TEXT("The expired buff's row is gone"), Scene.Hud->GetVisibleBuffRowCount(), 1);
     TestTrue(TEXT("The remaining row is the other buff"), Scene.Hud->GetBuffRowText(0).StartsWith(TEXT("Shield")));
 
-    Buffs->ClearBuffs();
+    Effects->RemoveAllEffects();
+    TestEqual(TEXT("No buffs, no rows"), Scene.Hud->GetVisibleBuffRowCount(), 0);
+
+    // A permanent buff (a totem reward) shows just its name, no time, and never disappears on its own.
+    Effects->ApplyEffect(GameplayHudTest::FScene::MakePermanentBuff(TEXT("Totem.MoveSpeed"), FText::FromString(TEXT("Swiftness")), EGrantMoneyStat::MoveSpeed, EGrantMoneyStatModifierOp::Multiplicative, 0.1f));
+    TestEqual(TEXT("One permanent buff row"), Scene.Hud->GetVisibleBuffRowCount(), 1);
+    TestEqual(TEXT("No time shown for a permanent buff"), Scene.Hud->GetBuffRowText(0), FString(TEXT("Swiftness")));
+
+    Effects->AdvanceEffects(60.0f);
+    Scene.Hud->RefreshAll();
+    TestEqual(TEXT("Still there after a long time"), Scene.Hud->GetVisibleBuffRowCount(), 1);
+    TestEqual(TEXT("Still just the name"), Scene.Hud->GetBuffRowText(0), FString(TEXT("Swiftness")));
+
+    Effects->RemoveAllEffects();
     TestEqual(TEXT("No buffs, no rows"), Scene.Hud->GetVisibleBuffRowCount(), 0);
 
     // Upgrades: level up, take the first offered option, and it is listed.
@@ -233,8 +276,9 @@ bool FGameplayHudRebindTest::RunTest(const FString& Parameters)
     OldPlayer->GetStats()->SetBaseStat(EGrantMoneyStat::Experience, OldPlayer->GetStats()->GetBaseStat(EGrantMoneyStat::Experience) + 5.0f);
     TestEqual(TEXT("Old player's XP does not touch the score"), Scene.Hud->GetScoreText(), FString(TEXT("0")));
 
-    OldPlayer->GetTemporaryBuffs()->AddBuff(TEXT("Ghost"), FText::GetEmpty(), EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Additive, 1.0f, 5.0f);
+    UTemporaryEffectComponent::FindOrAdd(OldPlayer)->ApplyEffect(GameplayHudTest::FScene::MakeBuff(TEXT("Ghost"), FText::GetEmpty(), EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Additive, 1.0f, 5.0f));
     TestEqual(TEXT("Old player's buffs do not show"), Scene.Hud->GetVisibleBuffRowCount(), 0);
+    TestFalse(TEXT("Old player's buff does not toast either"), Scene.Hud->IsToastVisible());
 
     // The new player is.
     NewPlayer->GetHealth()->ApplyDamage(10.0f);

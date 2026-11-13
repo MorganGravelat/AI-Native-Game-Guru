@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GrantMoneyStatTypes.h"
 #include "RunController.h"
 
 /**
@@ -33,8 +34,9 @@ struct GRANTMONEY_API FRunHudFormat
 	// "12s" from 10 s up (rounded up, so it reads 1s until it really is over), "4.3s" below that.
 	static FString FormatBuffRemaining(float Seconds);
 
-	// "Speed Surge  12s".
-	static FString FormatBuffLine(const FText& DisplayName, float RemainingSeconds);
+	// "Speed Surge  12s" for a timed buff; just "Swiftness" (no time at all) when bPermanent is set, since
+	// a permanent totem buff never counts down.
+	static FString FormatBuffLine(const FText& DisplayName, float RemainingSeconds, bool bPermanent = false);
 
 	// "Damage" for a first pick, "Damage x3" for more, and "(max)" appended once a stack limit above 1 is
 	// reached (MaxStacks 0 = unlimited; a one-pick upgrade is not marked, it is trivially at its limit).
@@ -45,4 +47,17 @@ struct GRANTMONEY_API FRunHudFormat
 
 	// Percent as 0..1, safe against a zero or negative maximum.
 	static float SafeFraction(float Value, float Max);
+
+	// The player-facing name for a stat. AttackInterval reads as "Attack Speed": a buff lowers the
+	// interval (shorter = faster attacks), and showing "Attack Interval" with a negative number would
+	// read backwards to a player, where every other stat's sign already matches "more is better".
+	static FString FormatStatName(EGrantMoneyStat Stat);
+
+	// "+50%" or "-20%" for a Multiplicative modifier, "+3" or "-1.5" for an Additive one. AttackInterval's
+	// sign is flipped first (see FormatStatName) so a positive number always reads as a buff.
+	static FString FormatStatMagnitude(EGrantMoneyStat Stat, EGrantMoneyStatModifierOp Op, float Magnitude);
+
+	// What a gained buff's toast says: "Frenzy  Attack Speed +30%". Falls back to just DisplayName (or
+	// "Buff gained" if that is also empty) when the effect is not a stat change.
+	static FString FormatBuffToast(const FText& DisplayName, bool bHasStat, EGrantMoneyStat Stat, EGrantMoneyStatModifierOp Op, float Magnitude);
 };

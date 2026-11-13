@@ -35,7 +35,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRewardTotemActivated, ARewardTot
  * copy of every effect in Effects, through the player's UTemporaryEffectComponent.
  *
  * The rewards are data: Effects holds any UTemporaryEffect subclasses, each with its own duration and
- * strength, edited inline in the Details panel. The default is +50% move speed for 8 seconds. A new
+ * strength, edited inline in the Details panel. The default is a small, permanent +10% move speed. A new
  * reward type is a new UTemporaryEffect subclass; neither this class nor the player changes.
  *
  * Built from engine shapes, so it needs no assets: a pillar, a glowing disc showing the activation range,
@@ -119,9 +119,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Visual")
 	FLinearColor SpentColor = FLinearColor(0.05f, 0.05f, 0.05f);
 
-	// Colour of the filled part of the bar.
+	// Colour of the filled part of the bar. BarMaterial is Opaque and Lit, not an HDR glow, so this is a
+	// plain 0..1 colour: a bold, clearly-visible red against BarBackgroundColor.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Visual")
-	FLinearColor BarColor = FLinearColor(3.0f, 2.2f, 0.2f);
+	FLinearColor BarColor = FLinearColor(0.85f, 0.05f, 0.05f);
+
+	// Colour of the unfilled part of the bar, behind BarColor. Default is white, so the red fill reads
+	// clearly against it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Visual")
+	FLinearColor BarBackgroundColor = FLinearColor::White;
 
 	// Height (cm) of the bar's centre above the totem's base.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Totem|Visual", meta = (Units = "cm"))
@@ -172,6 +178,15 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Totem|Visual")
 	TObjectPtr<UMaterialInterface> GlowMaterial;
 
+	// Separate material for the bar's two meshes. GlowMaterial (EmissiveMeshMaterial) is Additive blend,
+	// meant for bright overlay glows: it never occludes what is behind it, so two Additive segments next
+	// to each other both show through to the sky/background instead of reading as solid blocks, which is
+	// why the bar used to look like a washed-out white blob rather than a two-tone progress bar. This one
+	// (BasicShapeMaterial, the engine's own "give a basic shape a flat colour" material) is Opaque, so the
+	// fill and background actually occlude each other and whatever is behind the totem.
+	UPROPERTY(EditAnywhere, Category = "Totem|Visual")
+	TObjectPtr<UMaterialInterface> BarMaterial;
+
 private:
 	// Swaps in CustomMesh/CustomMaterial. Returns true if the totem now has a custom look.
 	bool ApplyCustomLook();
@@ -179,7 +194,12 @@ private:
 	void UpdateBar();
 	void FaceBarToCamera();
 	void ApplyColors();
+
+	// Tints Mesh with Color using GlowMaterial (the additive pillar/disc glow).
 	UMaterialInstanceDynamic* MakeGlow(UStaticMeshComponent* Mesh, const FLinearColor& Color);
+
+	// Tints Mesh with Color using BarMaterial (opaque, for the two bar segments).
+	UMaterialInstanceDynamic* MakeBarSegment(UStaticMeshComponent* Mesh, const FLinearColor& Color);
 
 	float ChargeProgress = 0.0f;
 	float CooldownRemaining = 0.0f;

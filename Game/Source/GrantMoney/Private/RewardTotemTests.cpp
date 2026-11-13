@@ -72,8 +72,8 @@ bool FRewardTotemDefaultsTest::RunTest(const FString& Parameters)
     }
     TestTrue(TEXT("It boosts move speed"), Speed->Stat == EGrantMoneyStat::MoveSpeed);
     TestTrue(TEXT("By a percentage"), Speed->ModifierOp == EGrantMoneyStatModifierOp::Multiplicative);
-    TestEqual(TEXT("+50%"), Speed->Magnitude, 0.5f);
-    TestEqual(TEXT("For 8 s"), Speed->Duration, 8.0f);
+    TestEqual(TEXT("+10%: small, since it is permanent"), Speed->Magnitude, 0.1f);
+    TestTrue(TEXT("Permanent, not timed"), Speed->bPermanent);
     TestFalse(TEXT("With a stack key, so two totems refresh rather than stack"), Speed->StackKey.IsNone());
     return true;
 }
@@ -116,11 +116,14 @@ bool FRewardTotemChargeTest::RunTest(const FString& Parameters)
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FRewardTotemActivateTest,
-    "GrantMoney.Rewards.Totem.FullBarGivesTemporaryBuff",
+    "GrantMoney.Rewards.Totem.FullBarGivesTheBuffAndATimedOneExpires",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FRewardTotemActivateTest::RunTest(const FString& Parameters)
 {
+    // The totem's default reward is permanent now; this test overrides it back to a timed one to prove
+    // the component's generic expiry path still works, since a totem (or a future pickup) can still
+    // offer a genuinely temporary reward if it wants one.
     EffectTest::FScene Scene;
     if (!Scene.Create(*this, TotemTest::Near))
     {
@@ -129,7 +132,9 @@ bool FRewardTotemActivateTest::RunTest(const FString& Parameters)
 
     ARewardTotem* Totem = TotemTest::SpawnTotem(Scene, [](ARewardTotem& Config)
     {
-        TotemTest::SpeedEffect(Config)->Duration = 2.0f;
+        UStatModifierEffect* Speed = TotemTest::SpeedEffect(Config);
+        Speed->bPermanent = false;
+        Speed->Duration = 2.0f;
     });
     if (!TestNotNull(TEXT("Totem spawned"), Totem))
     {
@@ -138,7 +143,7 @@ bool FRewardTotemActivateTest::RunTest(const FString& Parameters)
 
     Scene.Step(1.2f);
     TestTrue(TEXT("Activated and spent"), Totem->GetState() == ERewardTotemState::Spent);
-    TestEqual(TEXT("Buff active: 600 x 1.5"), Scene.MoveSpeed(), 900.0f);
+    TestEqual(TEXT("Buff active: 600 x 1.1"), Scene.MoveSpeed(), 660.0f);
     TestEqual(TEXT("One effect on the player"), TotemTest::ActiveEffects(Scene.Player), 1);
     TestEqual(TEXT("Visible aura on the player"), Scene.AuraLightCount(), 1);
     TestFalse(TEXT("Bar hidden once spent"), Totem->IsBarVisible());
@@ -152,6 +157,43 @@ bool FRewardTotemActivateTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Base never changed"), Scene.Stats->GetBaseStat(EGrantMoneyStat::MoveSpeed), EffectTest::BaseMoveSpeed);
     TestEqual(TEXT("No modifiers left"), Scene.Stats->GetModifiers().Num(), 0);
     TestEqual(TEXT("Aura gone"), Scene.AuraLightCount(), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRewardTotemActivateDefaultIsPermanentTest,
+    "GrantMoney.Rewards.Totem.FullBarGivesAPermanentBuffThatNeverExpires",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRewardTotemActivateDefaultIsPermanentTest::RunTest(const FString& Parameters)
+{
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this, TotemTest::Near))
+    {
+        return false;
+    }
+
+    ARewardTotem* Totem = TotemTest::SpawnTotem(Scene);
+    if (!TestNotNull(TEXT("Totem spawned"), Totem))
+    {
+        return false;
+    }
+
+    Scene.Step(1.2f);
+    TestTrue(TEXT("Activated and spent"), Totem->GetState() == ERewardTotemState::Spent);
+    TestEqual(TEXT("Buff active: 600 x 1.1"), Scene.MoveSpeed(), 660.0f);
+
+    const UTemporaryEffectComponent* Effects = Scene.Player->FindComponentByClass<UTemporaryEffectComponent>();
+    if (!TestNotNull(TEXT("Effect runner exists"), Effects) || !TestEqual(TEXT("One active effect"), Effects->GetActiveEffectCount(), 1))
+    {
+        return false;
+    }
+    TestEqual(TEXT("No countdown to report for a permanent effect"), Effects->GetRemainingSeconds(Effects->GetActiveEffects()[0].Effect), -1.0f);
+
+    // Long past any plausible "temporary" duration: still applied, because it never had a timer.
+    Scene.Step(30.0f);
+    TestEqual(TEXT("Still buffed after a long time"), Scene.MoveSpeed(), 660.0f);
+    TestEqual(TEXT("Still the one effect"), TotemTest::ActiveEffects(Scene.Player), 1);
     return true;
 }
 
@@ -189,8 +231,8 @@ bool FRewardTotemCooldownTest::RunTest(const FString& Parameters)
 
     Scene.Step(1.1f);
     TestTrue(TEXT("Used a second time"), Totem->GetState() == ERewardTotemState::Cooldown);
-    TestEqual(TEXT("Same stack key: refreshed, not stacked"), TotemTest::ActiveEffects(Scene.Player), 1);
-    TestEqual(TEXT("Still +50%"), Scene.MoveSpeed(), 900.0f);
+    TestEqual(TEXT("Same stack key: the permanent buff is not applied twice"), TotemTest::ActiveEffects(Scene.Player), 1);
+    TestEqual(TEXT("Still just +10%, not doubled"), Scene.MoveSpeed(), 660.0f);
     return true;
 }
 
@@ -220,6 +262,137 @@ bool FRewardTotemActivatorClassTest::RunTest(const FString& Parameters)
     Scene.Step(1.5f);
     TestEqual(TEXT("Other pawns do not charge it"), Totem->GetChargeProgress(), 0.0f);
     TestEqual(TEXT("Nothing given"), Scene.MoveSpeed(), EffectTest::BaseMoveSpeed);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRewardTotemPauseFreezesChargeTest,
+    "GrantMoney.Rewards.Totem.PauseFreezesCharge",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRewardTotemPauseFreezesChargeTest::RunTest(const FString& Parameters)
+{
+    // SCRUM-39: standing in a paused game (pause menu, level-up choice) must not charge the totem, the
+    // same way it must not advance the survival clock or any other timer-driven system.
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this, TotemTest::Near))
+    {
+        return false;
+    }
+
+    ARewardTotem* Totem = TotemTest::SpawnTotem(Scene, [](ARewardTotem& Config)
+    {
+        Config.ChargeSeconds = 2.0f;
+    });
+    if (!TestNotNull(TEXT("Totem spawned"), Totem))
+    {
+        return false;
+    }
+
+    Scene.Step(1.0f);
+    const float ChargeBeforePause = Totem->GetChargeProgress();
+    TestTrue(TEXT("Charging but not yet full"), ChargeBeforePause > 0.0f && ChargeBeforePause < 1.0f);
+
+    Scene.SetPaused(true);
+    Scene.Step(5.0f);
+    TestEqual(TEXT("A paused world does not advance the charge"), Totem->GetChargeProgress(), ChargeBeforePause);
+    TestTrue(TEXT("Not activated while paused"), Totem->GetState() == ERewardTotemState::Ready);
+
+    Scene.SetPaused(false);
+    Scene.Step(1.5f);
+    TestTrue(TEXT("Resumes charging and activates once unpaused"), Totem->GetState() == ERewardTotemState::Spent);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRewardTotemTimedAttackSpeedCombinesWithPermanentUpgradeTest,
+    "GrantMoney.Rewards.Totem.TimedAttackSpeedBuffCombinesWithPermanentUpgradeThenExpires",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRewardTotemTimedAttackSpeedCombinesWithPermanentUpgradeTest::RunTest(const FString& Parameters)
+{
+    // Generic coverage: a genuinely timed AttackInterval modifier (as a totem, or any future temporary
+    // reward, could still offer) is applied through the same UStatsComponent::AddModifier every permanent
+    // UUpgradeComponent pick uses, so the two must combine by summing their fractions, not overriding
+    // each other (UStatsComponent::GetStatFromBase), and the timed one must still expire on its own.
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this, TotemTest::Near))
+    {
+        return false;
+    }
+
+    Scene.Stats->SetBaseStat(EGrantMoneyStat::AttackInterval, 1.0f);
+
+    // Mirrors UUpgradeComponent's own "Attack Speed" upgrade (MakeAttackSpeedUpgrade): -8% per pick, permanent.
+    Scene.Stats->AddModifier(EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.08f);
+    TestEqual(TEXT("Permanent upgrade alone: 1.0 x 0.92"), Scene.Stats->GetStat(EGrantMoneyStat::AttackInterval), 0.92f);
+
+    ARewardTotem* Totem = TotemTest::SpawnTotem(Scene, [](ARewardTotem& Config)
+    {
+        Config.Effects.Reset();
+        UStatModifierEffect* TimedFrenzy = NewObject<UStatModifierEffect>(&Config);
+        TimedFrenzy->Stat = EGrantMoneyStat::AttackInterval;
+        TimedFrenzy->ModifierOp = EGrantMoneyStatModifierOp::Multiplicative;
+        TimedFrenzy->Magnitude = -0.3f;
+        TimedFrenzy->Duration = 2.0f;
+        TimedFrenzy->StackKey = TEXT("Totem.AttackSpeed");
+        Config.Effects.Add(TimedFrenzy);
+    });
+    if (!TestNotNull(TEXT("Totem spawned"), Totem))
+    {
+        return false;
+    }
+
+    Scene.Step(1.2f);
+    TestTrue(TEXT("Activated"), Totem->GetState() == ERewardTotemState::Spent);
+    TestEqual(TEXT("Fractions add before applying: 1.0 x (1 - 0.08 - 0.3)"), Scene.Stats->GetStat(EGrantMoneyStat::AttackInterval), 0.62f);
+
+    Scene.Step(2.2f);
+    TestEqual(TEXT("The timed buff expires; the permanent upgrade remains: 1.0 x 0.92"), Scene.Stats->GetStat(EGrantMoneyStat::AttackInterval), 0.92f);
+    TestEqual(TEXT("Only the permanent modifier is left"), Scene.Stats->GetModifiers().Num(), 1);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRewardTotemPermanentFrenzyCombinesWithPermanentUpgradeTest,
+    "GrantMoney.Rewards.Totem.PermanentFrenzyRewardCombinesWithPermanentUpgradeAndNeverExpires",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FRewardTotemPermanentFrenzyCombinesWithPermanentUpgradeTest::RunTest(const FString& Parameters)
+{
+    // The real reward: ARewardTotemSpawner's "Frenzy" (-10% attack interval, permanent).
+    EffectTest::FScene Scene;
+    if (!Scene.Create(*this, TotemTest::Near))
+    {
+        return false;
+    }
+
+    Scene.Stats->SetBaseStat(EGrantMoneyStat::AttackInterval, 1.0f);
+    Scene.Stats->AddModifier(EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.08f);
+
+    ARewardTotem* Totem = TotemTest::SpawnTotem(Scene, [](ARewardTotem& Config)
+    {
+        Config.Effects.Reset();
+        UStatModifierEffect* Frenzy = NewObject<UStatModifierEffect>(&Config);
+        Frenzy->Stat = EGrantMoneyStat::AttackInterval;
+        Frenzy->ModifierOp = EGrantMoneyStatModifierOp::Multiplicative;
+        Frenzy->Magnitude = -0.1f;
+        Frenzy->bPermanent = true;
+        Frenzy->StackKey = TEXT("Totem.Frenzy");
+        Config.Effects.Add(Frenzy);
+    });
+    if (!TestNotNull(TEXT("Totem spawned"), Totem))
+    {
+        return false;
+    }
+
+    Scene.Step(1.2f);
+    TestTrue(TEXT("Activated"), Totem->GetState() == ERewardTotemState::Spent);
+    TestEqual(TEXT("Fractions add before applying: 1.0 x (1 - 0.08 - 0.1)"), Scene.Stats->GetStat(EGrantMoneyStat::AttackInterval), 0.82f);
+
+    Scene.Step(30.0f);
+    TestEqual(TEXT("Still combined after a long time: neither ever expires"), Scene.Stats->GetStat(EGrantMoneyStat::AttackInterval), 0.82f);
+    TestEqual(TEXT("Both modifiers remain"), Scene.Stats->GetModifiers().Num(), 2);
     return true;
 }
 
@@ -280,11 +453,11 @@ bool FRewardTotemNewRewardTypeTest::RunTest(const FString& Parameters)
 
     TestEqual(TEXT("Both rewards given"), Totem->Activate(Scene.Player), 2);
     TestEqual(TEXT("The new type applied once"), UTestCountingEffect::Applies, 1);
-    TestEqual(TEXT("The speed buff applied alongside it"), Scene.MoveSpeed(), 900.0f);
+    TestEqual(TEXT("The permanent speed buff applied alongside it"), Scene.MoveSpeed(), 660.0f);
 
     Scene.Step(0.6f);
     TestEqual(TEXT("The new type ends on its own timer"), UTestCountingEffect::Removes, 1);
-    TestEqual(TEXT("The speed buff keeps its own timer"), Scene.MoveSpeed(), 900.0f);
+    TestEqual(TEXT("The permanent speed buff is unaffected by the other effect's timer"), Scene.MoveSpeed(), 660.0f);
     return true;
 }
 

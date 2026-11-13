@@ -9,6 +9,8 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/WorldSettings.h"
 #include "Misc/AutomationTest.h"
 #include "StatsComponent.h"
 #include "Tests/AutomationCommon.h"
@@ -50,6 +52,13 @@ namespace EffectTest
 		}
 
 		UWorld* World() const { return WorldWrapper.GetTestWorld(); }
+
+		// Pauses or resumes the world the way the pause menu and the level-up choice screen do: a player
+		// state holds the pause (see MapCameraPlayerController::OpenPauseMenu / ShowLevelUpChoice).
+		void SetPaused(bool bPaused)
+		{
+			World()->GetWorldSettings()->SetPauserPlayerState(bPaused ? World()->SpawnActor<APlayerState>() : nullptr);
+		}
 
 		ACharacter* SpawnCharacter(const FVector& Location)
 		{

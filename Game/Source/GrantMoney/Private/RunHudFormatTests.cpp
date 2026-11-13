@@ -61,6 +61,7 @@ bool FRunHudFormatBuffAndUpgradeTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Short remaining time shows a decimal"), FRunHudFormat::FormatBuffRemaining(4.26f), FString(TEXT("4.3s")));
     TestEqual(TEXT("Negative remaining reads 0"), FRunHudFormat::FormatBuffRemaining(-1.0f), FString(TEXT("0.0s")));
     TestEqual(TEXT("Buff line"), FRunHudFormat::FormatBuffLine(FText::FromString(TEXT("Speed Surge")), 12.0f), FString(TEXT("Speed Surge  12s")));
+    TestEqual(TEXT("A permanent buff line has no time at all"), FRunHudFormat::FormatBuffLine(FText::FromString(TEXT("Swiftness")), 12.0f, true), FString(TEXT("Swiftness")));
 
     const FText Damage = FText::FromString(TEXT("Damage"));
     TestEqual(TEXT("First pick has no count"), FRunHudFormat::FormatUpgradeLine(Damage, 1, 5), FString(TEXT("Damage")));

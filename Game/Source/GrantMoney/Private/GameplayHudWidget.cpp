@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 // NO-TEST (layout only): the widget tree and its colours are checked by eye in the Editor. What it shows is
-// tested: the formulas and text in FRunHudFormat, the buff clock in UTemporaryBuffComponent, the upgrade
+// tested: the formulas and text in FRunHudFormat, the buff timer in UTemporaryEffectComponent, the upgrade
 // history in UUpgradeComponent, and the binding / rebinding behaviour in GameplayHudWidgetTests.cpp.
 
 #include "GameplayHudWidget.h"
@@ -30,7 +30,8 @@
 #include "StatsComponent.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
-#include "TemporaryBuffComponent.h"
+#include "TemporaryEffect.h"
+#include "TemporaryEffectComponent.h"
 #include "UpgradeComponent.h"
 
 namespace
@@ -43,6 +44,7 @@ namespace
 	const FLinearColor XpBlue(0.20f, 0.60f, 1.0f, 1.0f);
 	const FLinearColor BuffGreen(0.55f, 1.0f, 0.60f, 1.0f);
 	const FLinearColor BossPurple(0.80f, 0.30f, 1.0f, 1.0f);
+	const FLinearColor ToastGold(1.0f, 0.86f, 0.35f, 1.0f);
 
 	FLinearColor ColorForState(EGrantMoneyRunState State)
 	{
@@ -201,6 +203,9 @@ void UGameplayHudWidget::EnsureLayout()
 	EnemyCountText = MakeText(14, LabelGrey, false, ETextJustify::Center);
 	EnemyCountText->SetVisibility(ESlateVisibility::Collapsed);
 	AddTo(CentreBox, EnemyCountText, HAlign_Center, 2.0f);
+	ToastText = MakeText(20, ToastGold, true, ETextJustify::Center);
+	ToastText->SetVisibility(ESlateVisibility::Collapsed);
+	AddTo(CentreBox, ToastText, HAlign_Center, 6.0f);
 	Place(MakePanel(CentreBox), FAnchors(0.5f, 0.0f), FVector2D(0.5f, 0.0f), FVector2D(0.0f, 16.0f));
 
 	// Top right: score.
@@ -258,7 +263,7 @@ void UGameplayHudWidget::UnbindPlayer()
 		if (UStatsComponent* Stats = Bound->GetStats()) { Stats->OnStatChanged.RemoveAll(this); }
 		if (ULevelComponent* Level = Bound->GetLevelComponent()) { Level->OnLevelUp.RemoveAll(this); }
 		if (UUpgradeComponent* Upgrades = Bound->GetUpgradeComponent()) { Upgrades->OnUpgradeChosen.RemoveAll(this); }
-		if (UTemporaryBuffComponent* Buffs = Bound->GetTemporaryBuffs()) { Buffs->OnBuffsChanged.RemoveAll(this); }
+		if (UTemporaryEffectComponent* Effects = Bound->FindComponentByClass<UTemporaryEffectComponent>()) { Effects->OnEffectApplied.RemoveAll(this); Effects->OnEffectEnded.RemoveAll(this); }
 	}
 
 	Player.Reset();
@@ -293,7 +298,14 @@ void UGameplayHudWidget::BindPlayer(AGrantMoneyPlayerCharacter* InPlayer)
 		if (UStatsComponent* Stats = InPlayer->GetStats()) { Stats->OnStatChanged.AddUniqueDynamic(this, &UGameplayHudWidget::HandleStatChanged); }
 		if (ULevelComponent* Level = InPlayer->GetLevelComponent()) { Level->OnLevelUp.AddUniqueDynamic(this, &UGameplayHudWidget::HandleLevelUp); }
 		if (UUpgradeComponent* Upgrades = InPlayer->GetUpgradeComponent()) { Upgrades->OnUpgradeChosen.AddUniqueDynamic(this, &UGameplayHudWidget::HandleUpgradeChosen); }
-		if (UTemporaryBuffComponent* Buffs = InPlayer->GetTemporaryBuffs()) { Buffs->OnBuffsChanged.AddUniqueDynamic(this, &UGameplayHudWidget::HandleBuffsChanged); }
+
+		// On-demand, the same way ARewardTotem::Activate gets it: nothing changes on the player character
+		// itself, and the component is there from the first bind, so there is never a gap to miss an event in.
+		if (UTemporaryEffectComponent* Effects = UTemporaryEffectComponent::FindOrAdd(InPlayer))
+		{
+			Effects->OnEffectApplied.AddUniqueDynamic(this, &UGameplayHudWidget::HandleEffectApplied);
+			Effects->OnEffectEnded.AddUniqueDynamic(this, &UGameplayHudWidget::HandleEffectEnded);
+		}
 	}
 
 	RefreshHealth();
@@ -389,7 +401,13 @@ void UGameplayHudWidget::HandleUpgradeChosen()
 	RefreshUpgrades();
 }
 
-void UGameplayHudWidget::HandleBuffsChanged()
+void UGameplayHudWidget::HandleEffectApplied(UTemporaryEffect* Effect)
+{
+	RefreshBuffs();
+	ShowToast(Effect);
+}
+
+void UGameplayHudWidget::HandleEffectEnded(UTemporaryEffect* Effect)
 {
 	RefreshBuffs();
 }
@@ -516,9 +534,9 @@ void UGameplayHudWidget::EnsureRows(UVerticalBox* Box, TArray<TObjectPtr<UTextBl
 void UGameplayHudWidget::RefreshBuffs()
 {
 	const AGrantMoneyPlayerCharacter* Bound = Player.Get();
-	const UTemporaryBuffComponent* Buffs = Bound ? Bound->GetTemporaryBuffs() : nullptr;
-	static const TArray<FGrantMoneyActiveBuff> NoBuffs;
-	const TArray<FGrantMoneyActiveBuff>& Active = Buffs ? Buffs->GetActiveBuffs() : NoBuffs;
+	const UTemporaryEffectComponent* Effects = Bound ? Bound->FindComponentByClass<UTemporaryEffectComponent>() : nullptr;
+	static const TArray<FActiveTemporaryEffect> NoEffects;
+	const TArray<FActiveTemporaryEffect>& Active = Effects ? Effects->GetActiveEffects() : NoEffects;
 
 	VisibleBuffRows = Active.Num();
 	EnsureRows(BuffBox, BuffRows, VisibleBuffRows);
@@ -526,10 +544,13 @@ void UGameplayHudWidget::RefreshBuffs()
 
 	for (int32 Index = 0; Index < Active.Num(); ++Index)
 	{
-		const FGrantMoneyActiveBuff& Buff = Active[Index];
-		const FText Name = Buff.DisplayName.IsEmpty() ? FText::FromName(Buff.Id) : Buff.DisplayName;
-		BuffRows[Index]->SetColorAndOpacity(FSlateColor(BuffGreen));
-		SetTextIfChanged(BuffRows[Index], FRunHudFormat::FormatBuffLine(Name, Buff.RemainingSeconds));
+		const UTemporaryEffect* Effect = Active[Index].Effect;
+		const bool bPermanent = Effect && Effect->bPermanent;
+		const FText Name = (Effect && !Effect->DisplayName.IsEmpty()) ? Effect->DisplayName : FText::FromString(TEXT("Buff"));
+		// Permanent totem buffs read gold (matching the UPGRADES panel below them), not green, so a
+		// glance tells a lasting pick apart from a buff that is still counting down.
+		BuffRows[Index]->SetColorAndOpacity(FSlateColor(bPermanent ? Gold : BuffGreen));
+		SetTextIfChanged(BuffRows[Index], FRunHudFormat::FormatBuffLine(Name, Active[Index].RemainingSeconds, bPermanent));
 	}
 }
 
@@ -591,6 +612,39 @@ void UGameplayHudWidget::RefreshEnemyCount()
 	}
 }
 
+void UGameplayHudWidget::ShowToast(const UTemporaryEffect* Effect)
+{
+	if (!Effect)
+	{
+		return;
+	}
+
+	const UStatModifierEffect* StatEffect = Cast<UStatModifierEffect>(Effect);
+	const FString Text = FRunHudFormat::FormatBuffToast(Effect->DisplayName, StatEffect != nullptr,
+		StatEffect ? StatEffect->Stat : EGrantMoneyStat::MaxHealth,
+		StatEffect ? StatEffect->ModifierOp : EGrantMoneyStatModifierOp::Additive,
+		StatEffect ? StatEffect->Magnitude : 0.0f);
+
+	SetTextIfChanged(ToastText, Text);
+	ToastText->SetVisibility(ESlateVisibility::HitTestInvisible);
+	ToastRemainingSeconds = ToastVisibleSeconds;
+}
+
+void UGameplayHudWidget::RefreshToast(float DeltaTime)
+{
+	if (ToastRemainingSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	ToastRemainingSeconds -= DeltaTime;
+	if (ToastRemainingSeconds <= 0.0f)
+	{
+		ToastRemainingSeconds = 0.0f;
+		ToastText->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
 void UGameplayHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
@@ -612,6 +666,7 @@ void UGameplayHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 		RefreshBuffs();
 	}
 
+	RefreshToast(InDeltaTime);
 	RefreshBoss();
 	RefreshEnemyCount();
 }
@@ -638,3 +693,5 @@ float UGameplayHudWidget::GetHealthPercent() const { return HealthBar ? HealthBa
 float UGameplayHudWidget::GetXpPercent() const { return XpBar ? XpBar->GetPercent() : 0.0f; }
 FString UGameplayHudWidget::GetBuffRowText(int32 Index) const { return BuffRows.IsValidIndex(Index) ? TextOf(BuffRows[Index]) : FString(); }
 FString UGameplayHudWidget::GetUpgradeRowText(int32 Index) const { return UpgradeRows.IsValidIndex(Index) ? TextOf(UpgradeRows[Index]) : FString(); }
+FString UGameplayHudWidget::GetToastText() const { return TextOf(ToastText); }
+bool UGameplayHudWidget::IsToastVisible() const { return ToastText && ToastText->GetVisibility() != ESlateVisibility::Collapsed; }

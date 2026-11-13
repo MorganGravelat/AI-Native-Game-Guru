@@ -16,9 +16,6 @@ namespace
 
 	// The clearance box starts this far above the ground, so the ground itself never counts as blocking.
 	constexpr double ClearanceLift = 5.0;
-
-	// Every default buff lasts this long.
-	constexpr float DefaultBuffSeconds = 8.0f;
 }
 
 ARewardTotemSpawner::ARewardTotemSpawner()
@@ -28,28 +25,29 @@ ARewardTotemSpawner::ARewardTotemSpawner()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	TotemClass = ARewardTotem::StaticClass();
 
-	// The default random pool. Each has its own stack key, so two different buffs stack and a repeat refreshes.
+	// The default random pool: small, permanent buffs. Each has its own stack key, so two different
+	// buffs stack together and a repeat of the same one is a no-op (it is already permanent).
 	auto AddBuff = [this](const TCHAR* Name, EGrantMoneyStat Stat, EGrantMoneyStatModifierOp Op, float Magnitude, const FText& DisplayName, const FLinearColor& Color)
 	{
 		UStatModifierEffect* Buff = CreateDefaultSubobject<UStatModifierEffect>(Name);
 		Buff->Stat = Stat;
 		Buff->ModifierOp = Op;
 		Buff->Magnitude = Magnitude;
-		Buff->Duration = DefaultBuffSeconds;
+		Buff->bPermanent = true;
 		Buff->StackKey = FName(*FString::Printf(TEXT("Totem.%s"), Name));
 		Buff->DisplayName = DisplayName;
 		Buff->AuraColor = Color;
 		RandomEffectPool.Add(Buff);
 	};
 
-	AddBuff(TEXT("Swiftness"), EGrantMoneyStat::MoveSpeed, EGrantMoneyStatModifierOp::Multiplicative, 0.5f,
-		NSLOCTEXT("GrantMoney", "TotemSwiftness", "Swiftness (+50% move speed)"), FLinearColor(0.1f, 1.0f, 0.3f));
-	AddBuff(TEXT("Might"), EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Multiplicative, 0.5f,
-		NSLOCTEXT("GrantMoney", "TotemMight", "Might (+50% damage)"), FLinearColor(1.0f, 0.15f, 0.1f));
-	AddBuff(TEXT("Frenzy"), EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.3f,
-		NSLOCTEXT("GrantMoney", "TotemFrenzy", "Frenzy (30% shorter attack interval)"), FLinearColor(1.0f, 0.8f, 0.1f));
-	AddBuff(TEXT("Piercing"), EGrantMoneyStat::Penetration, EGrantMoneyStatModifierOp::Additive, 2.0f,
-		NSLOCTEXT("GrantMoney", "TotemPiercing", "Piercing (+2 penetration)"), FLinearColor(0.2f, 0.5f, 1.0f));
+	AddBuff(TEXT("Swiftness"), EGrantMoneyStat::MoveSpeed, EGrantMoneyStatModifierOp::Multiplicative, 0.1f,
+		NSLOCTEXT("GrantMoney", "TotemSwiftness", "Swiftness (+10% move speed)"), FLinearColor(0.1f, 1.0f, 0.3f));
+	AddBuff(TEXT("Might"), EGrantMoneyStat::Damage, EGrantMoneyStatModifierOp::Multiplicative, 0.1f,
+		NSLOCTEXT("GrantMoney", "TotemMight", "Might (+10% damage)"), FLinearColor(1.0f, 0.15f, 0.1f));
+	AddBuff(TEXT("Frenzy"), EGrantMoneyStat::AttackInterval, EGrantMoneyStatModifierOp::Multiplicative, -0.1f,
+		NSLOCTEXT("GrantMoney", "TotemFrenzy", "Frenzy (10% shorter attack interval)"), FLinearColor(1.0f, 0.8f, 0.1f));
+	AddBuff(TEXT("Piercing"), EGrantMoneyStat::Penetration, EGrantMoneyStatModifierOp::Additive, 1.0f,
+		NSLOCTEXT("GrantMoney", "TotemPiercing", "Piercing (+1 penetration)"), FLinearColor(0.2f, 0.5f, 1.0f));
 }
 
 void ARewardTotemSpawner::BeginPlay()

@@ -23,6 +23,11 @@ namespace
 
 	// Emissive values above 1 glow; the ring should read clearly from the map camera.
 	constexpr float AuraRingGlow = 4.0f;
+
+	// /Engine/EngineMaterials/EmissiveMeshMaterial's one vector parameter is named "Color", not
+	// "EmissiveColor" (verified against the material's actual exposed parameters; see the matching
+	// comment and fix in RewardTotem.cpp, which used the same wrong name).
+	const FName AuraColorParameterName(TEXT("Color"));
 }
 
 UTemporaryEffectComponent::UTemporaryEffectComponent()
@@ -64,7 +69,11 @@ UTemporaryEffect* UTemporaryEffectComponent::ApplyEffect(const UTemporaryEffect*
 		{
 			if (Active.Effect && Active.Effect->StackKey == Template->StackKey)
 			{
-				Active.RemainingSeconds = FMath::Max(Active.RemainingSeconds, Template->Duration);
+				// A permanent match is already applied for good: nothing to refresh, and no new copy to add.
+				if (!Active.Effect->bPermanent)
+				{
+					Active.RemainingSeconds = FMath::Max(Active.RemainingSeconds, Template->Duration);
+				}
 				return Active.Effect;
 			}
 		}
@@ -79,11 +88,18 @@ UTemporaryEffect* UTemporaryEffectComponent::ApplyEffect(const UTemporaryEffect*
 
 	FActiveTemporaryEffect& Active = ActiveEffects.AddDefaulted_GetRef();
 	Active.Effect = Effect;
-	Active.RemainingSeconds = FMath::Max(Effect->Duration, UE_KINDA_SMALL_NUMBER);
+	Active.RemainingSeconds = Effect->bPermanent ? -1.0f : FMath::Max(Effect->Duration, UE_KINDA_SMALL_NUMBER);
 	ShowAura(Active);
 	UpdateTickState();
 
-	UE_LOG(LogTemp, Log, TEXT("TemporaryEffect: %s gained %s for %.1f s."), *GetNameSafe(Owner), *Effect->DisplayName.ToString(), Active.RemainingSeconds);
+	if (Effect->bPermanent)
+	{
+		UE_LOG(LogTemp, Log, TEXT("TemporaryEffect: %s permanently gained %s."), *GetNameSafe(Owner), *Effect->DisplayName.ToString());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("TemporaryEffect: %s gained %s for %.1f s."), *GetNameSafe(Owner), *Effect->DisplayName.ToString(), Active.RemainingSeconds);
+	}
 	OnEffectApplied.Broadcast(Effect);
 	return Effect;
 }
@@ -117,6 +133,12 @@ void UTemporaryEffectComponent::AdvanceEffects(float DeltaSeconds)
 			continue; // An OnEffectEnded listener removed more than one effect.
 		}
 
+		// A permanent effect has no timer: it stays until explicitly removed.
+		if (!ActiveEffects[Index].Effect || ActiveEffects[Index].Effect->bPermanent)
+		{
+			continue;
+		}
+
 		ActiveEffects[Index].RemainingSeconds -= DeltaSeconds;
 		if (ActiveEffects[Index].RemainingSeconds <= 0.0f)
 		{
@@ -128,7 +150,12 @@ void UTemporaryEffectComponent::AdvanceEffects(float DeltaSeconds)
 float UTemporaryEffectComponent::GetRemainingSeconds(const UTemporaryEffect* Effect) const
 {
 	const FActiveTemporaryEffect* Found = ActiveEffects.FindByPredicate([Effect](const FActiveTemporaryEffect& Active) { return Active.Effect.Get() == Effect; });
-	return Found ? FMath::Max(0.0f, Found->RemainingSeconds) : 0.0f;
+	if (!Found)
+	{
+		return 0.0f;
+	}
+
+	return (Found->Effect && Found->Effect->bPermanent) ? -1.0f : FMath::Max(0.0f, Found->RemainingSeconds);
 }
 
 void UTemporaryEffectComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -168,7 +195,9 @@ void UTemporaryEffectComponent::EndEffectAt(int32 Index)
 
 void UTemporaryEffectComponent::UpdateTickState()
 {
-	SetComponentTickEnabled(ActiveEffects.Num() > 0);
+	// A permanent effect has nothing to count down, so its presence alone is no reason to keep ticking.
+	const bool bAnyTimed = ActiveEffects.ContainsByPredicate([](const FActiveTemporaryEffect& Active) { return Active.Effect && !Active.Effect->bPermanent; });
+	SetComponentTickEnabled(bAnyTimed);
 }
 
 void UTemporaryEffectComponent::ShowAura(FActiveTemporaryEffect& Active)
@@ -210,7 +239,7 @@ void UTemporaryEffectComponent::ShowAura(FActiveTemporaryEffect& Active)
 		if (UMaterialInterface* Glow = LoadObject<UMaterialInterface>(nullptr, AuraRingMaterialPath))
 		{
 			UMaterialInstanceDynamic* Tint = UMaterialInstanceDynamic::Create(Glow, Ring);
-			Tint->SetVectorParameterValue(TEXT("EmissiveColor"), Effect.AuraColor * AuraRingGlow);
+			Tint->SetVectorParameterValue(AuraColorParameterName, Effect.AuraColor * AuraRingGlow);
 			Ring->SetMaterial(0, Tint);
 		}
 		Ring->RegisterComponent();
