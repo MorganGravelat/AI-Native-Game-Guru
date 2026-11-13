@@ -71,6 +71,13 @@ bool UContactDamageComponent::TryApplyContactDamage(AActor* Target)
 
 	AActor* Owner = GetOwner();
 	UGameplayStatics::ApplyDamage(Target, Damage, Owner->GetInstigatorController(), Owner, UDamageType::StaticClass());
+
+	if (bLogHits)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ContactDamage: %s hit %s for %.1f at t=%.2f s (next hit possible after %.1f s)."),
+			*Owner->GetName(), *Target->GetName(), Damage, Now, GetInterval());
+	}
+
 	LastHitTime = Now;
 	return true;
 }

@@ -5,6 +5,7 @@
 
 #include "GameOverWidget.h"
 
+#include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerController.h"
@@ -28,8 +29,36 @@ void UGameOverWidget::NativeConstruct()
     }
 }
 
-void UGameOverWidget::SetResults(float SurvivalSeconds, float Experience)
+void UGameOverWidget::SetResults(float SurvivalSeconds, float Experience, const FText& Title)
 {
+    if (!Title.IsEmpty())
+    {
+        // Prefer the explicitly named heading; otherwise retitle the existing "Game Over" heading, so a
+        // win does not depend on the widget having been edited.
+        UTextBlock* Heading = ResultTitleText;
+        if (!Heading && WidgetTree)
+        {
+            WidgetTree->ForEachWidget([&Heading](UWidget* Widget)
+            {
+                UTextBlock* Text = Cast<UTextBlock>(Widget);
+                if (!Heading && Text && Text->GetText().ToString().Contains(TEXT("game over"), ESearchCase::IgnoreCase))
+                {
+                    Heading = Text;
+                }
+            });
+
+            if (!Heading)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("GameOverWidget: %s has no TextBlock named 'ResultTitleText' and none reading 'Game Over', so the heading '%s' cannot be shown."), *GetName(), *Title.ToString());
+            }
+        }
+
+        if (Heading)
+        {
+            Heading->SetText(Title);
+        }
+    }
+
     if (SurvivalTimeText)
     {
         SurvivalTimeText->SetText(FText::FromString(FString::Printf(TEXT("Survived %s"), *ARunController::FormatClock(SurvivalSeconds))));

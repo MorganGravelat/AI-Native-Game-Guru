@@ -170,6 +170,10 @@ protected:
 	// Flat (no vertical part) unit direction toward the target, or zero when already within StopDistance.
 	virtual FVector GetMoveDirection() const;
 
+	// Speed (cm/s) applied this frame: MoveSpeed, eased down within SlowdownDistance of StopDistance.
+	// Override for special movement (the boss lunge returns its charge speed).
+	virtual float GetDesiredMoveSpeed() const;
+
 	void MoveTowardTarget();
 
 private:

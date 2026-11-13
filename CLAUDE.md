@@ -99,6 +99,31 @@ it blocks finishing while a new .cpp lacks a test or the tests fail. Do not edit
 hook to get past it. If the Unreal Editor is open with Live Coding, the build fails; ask the user
 to close it.
 
+## Verification Scope (mandatory)
+
+Headless Automation tests are the AI's job; everything that needs eyes on the screen is the
+developer's job. Keep the two separate:
+
+- **Write a test for every new/changed piece of logic** (per Testing Rules above) — not optional.
+- **Run only the tests for what was just built or changed this session**, e.g.
+  `python scripts/run_tests.py --filter GrantMoney.<Area>`. Do not run the whole `GrantMoney.*`
+  suite by default; only do that if the targeted run fails or something looks genuinely broken and
+  a wider check is needed to localize it. The developer runs the full suite and does all other
+  verification themselves.
+- **Never try to observe on-screen/gameplay behavior yourself.** No headless PIE runs, no scripted
+  gameplay simulation, no other workaround to approximate what a test can't check directly (visual
+  feel, UI layout, stacking/physics "look," Blueprint widget behavior). Don't spend time or tokens
+  engineering a way to simulate it — the developer will try it in the Editor and report back.
+- **If a scoped test run surfaces a real bug, fix it in the same pass** (fixing what you already
+  found is expected), but do not go hunting for more issues beyond what was actually asked for and
+  scoped this session.
+- Once implementation and the scoped automation tests pass, hand off: ask the developer a short
+  batch of yes/no quiz-style questions for anything needing manual/in-editor confirmation (see
+  Course Documentation Workflow below), rather than writing more tests or speculative documentation
+  to compensate.
+- Creating or editing Blueprint/widget assets (`.uasset`) is always the developer's step; the AI
+  cannot do it (binary assets) and should give exact, concrete Editor instructions instead.
+
 ## Workflow
 
 Before modifying code:
@@ -134,7 +159,7 @@ For every meaningful implementation step:
 
 Do not invent screenshots, recordings, test results, or development steps.
 
-**Manual/in-editor verification:** when the AI needs the developer to confirm something it cannot check itself (PIE behavior, UI, etc.), ask a short batch of yes/no quiz-style questions (e.g. via an elicitation tool) rather than a long free-form question or writing speculative documentation. In the ScriptDocumentation.md, just note that this quiz method was used and whether everything was confirmed; do not transcribe each individual question/answer.
+**Manual/in-editor verification:** when the AI needs the developer to confirm something it cannot check itself (PIE behavior, UI, etc. — see Verification Scope above for what that covers), ask a short batch of yes/no quiz-style questions (e.g. via an elicitation tool) rather than a long free-form question or writing speculative documentation. In the ScriptDocumentation.md, just note that this quiz method was used and whether everything was confirmed; do not transcribe each individual question/answer.
 
 At the end of a task, be able to produce:
 

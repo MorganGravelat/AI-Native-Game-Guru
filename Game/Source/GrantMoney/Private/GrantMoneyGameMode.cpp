@@ -4,6 +4,7 @@
 #include "GrantMoneyGameMode.h"
 
 #include "TimerManager.h"
+#include "BossEncounter.h"
 #include "Components/CapsuleComponent.h"
 #include "EnemySpawner.h"
 #include "Engine/World.h"
@@ -40,6 +41,7 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 	SkyLightingClass = ASkyLightingActor::StaticClass();
 	RunControllerClass = ARunController::StaticClass();
 	EnemySpawnerClass = AEnemySpawner::StaticClass();
+	BossEncounterClass = ABossEncounter::StaticClass();
 	DefaultPawnClass = PlayerCharacterClass;
 	HUDClass = ARunHUD::StaticClass();
 }
@@ -275,6 +277,22 @@ void AGrantMoneyGameMode::PrepareRun()
 		World->SpawnActor<AEnemySpawner>(EnemySpawnerClass, FTransform::Identity, SpawnParams);
 	}
 
+	// And for the boss encounter: one placed in the level wins, so a level can pick its own boss.
+	ABossEncounter* Encounter = ABossEncounter::Find(World);
+	if (!Encounter && BossEncounterClass)
+	{
+		Encounter = World->SpawnActor<ABossEncounter>(BossEncounterClass, FTransform::Identity, SpawnParams);
+	}
+
+	if (Encounter)
+	{
+		Encounter->BindToRunController(RunController);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GrantMoneyGameMode: no boss encounter, so the run has no boss to win."));
+	}
+
 	// Wait for the map to be built (the TileMapRenderer builds it at BeginPlay) before the clock starts.
 	RunReadyChecks = 0;
 	World->GetTimerManager().SetTimer(RunReadyTimer, this, &AGrantMoneyGameMode::CheckRunReady, RunReadyPollSeconds, true);
@@ -351,25 +369,32 @@ void AGrantMoneyGameMode::CheckRunReady()
 
 void AGrantMoneyGameMode::HandleRunStateChanged(EGrantMoneyRunState OldState, EGrantMoneyRunState NewState)
 {
-	if (NewState != EGrantMoneyRunState::Lost)
+	const bool bWon = NewState == EGrantMoneyRunState::Won;
+	if (!bWon && NewState != EGrantMoneyRunState::Lost)
 	{
-		// Won has no screen yet: there is no boss to reach it, so there is nothing to verify today.
 		return;
 	}
 
 	AMapCameraPlayerController* PC = Cast<AMapCameraPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
 	if (!PC)
 	{
-		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: no MapCameraPlayerController to show the Game Over screen on."));
+		UE_LOG(LogTemp, Error, TEXT("GrantMoneyGameMode: no MapCameraPlayerController to show the result screen on."));
 		return;
 	}
 
 	const AGrantMoneyPlayerCharacter* PlayerCharacter = Cast<AGrantMoneyPlayerCharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 	const float Experience = PlayerCharacter ? PlayerCharacter->GetExperience() : 0.0f;
 
-	UE_LOG(LogTemp, Log, TEXT("GrantMoneyGameMode: run lost at %.1f s survived, %.0f XP; showing the Game Over screen."),
-		RunController->GetElapsedSeconds(), Experience);
+	UE_LOG(LogTemp, Log, TEXT("GrantMoneyGameMode: run %s at %.1f s survived, %.0f XP; showing the %s screen."),
+		bWon ? TEXT("won") : TEXT("lost"), RunController->GetElapsedSeconds(), Experience, bWon ? TEXT("Victory") : TEXT("Game Over"));
 
-	PC->ShowGameOver(RunController->GetElapsedSeconds(), Experience);
+	if (bWon)
+	{
+		PC->ShowVictory(RunController->GetElapsedSeconds(), Experience);
+	}
+	else
+	{
+		PC->ShowGameOver(RunController->GetElapsedSeconds(), Experience);
+	}
 }
 
