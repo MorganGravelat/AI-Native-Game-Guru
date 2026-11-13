@@ -11,6 +11,7 @@
 class AMapCameraPawn;
 class ASkyLightingActor;
 class AEnemySpawner;
+class ARewardTotemSpawner;
 class ARunController;
 
 /**
@@ -22,7 +23,8 @@ class ARunController;
  * It also sets up the timed run: one ARunController and, unless the level has its own, a default
  * AEnemySpawner. The run is started once the map has been built and the player pawn exists.
  * A RunController or EnemySpawner placed in the level is used instead of a default one, so a level
- * can set its own duration, enemy type and spawn numbers.
+ * can set its own duration, enemy type and spawn numbers. The same goes for the reward totems (SCRUM-39):
+ * a default ARewardTotemSpawner scatters them over the map unless the level has its own spawner.
  *
  * On a loss (the player's HealthComponent reaching zero, see AGrantMoneyPlayerCharacter), it pauses the
  * game and shows the local player's Game Over screen with survival time and XP (SCRUM-44). Restart and
@@ -90,6 +92,10 @@ protected:
 	// Defaults to AEnemySpawner (slimes). Spawned only when the level has no AEnemySpawner. Null disables it.
 	UPROPERTY(EditDefaultsOnly, Category = "Run")
 	TSubclassOf<AEnemySpawner> EnemySpawnerClass;
+
+	// Defaults to ARewardTotemSpawner (3 totems). Spawned only when the level has no ARewardTotemSpawner. Null disables it.
+	UPROPERTY(EditDefaultsOnly, Category = "Run")
+	TSubclassOf<ARewardTotemSpawner> RewardTotemSpawnerClass;
 
 private:
 	UPROPERTY(Transient)

@@ -16,6 +16,7 @@
 #include "MapCameraPawn.h"
 #include "MapCameraPlayerController.h"
 #include "PlayerSpawnResolver.h"
+#include "RewardTotemSpawner.h"
 #include "RunHUD.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -40,6 +41,7 @@ AGrantMoneyGameMode::AGrantMoneyGameMode()
 	SkyLightingClass = ASkyLightingActor::StaticClass();
 	RunControllerClass = ARunController::StaticClass();
 	EnemySpawnerClass = AEnemySpawner::StaticClass();
+	RewardTotemSpawnerClass = ARewardTotemSpawner::StaticClass();
 	DefaultPawnClass = PlayerCharacterClass;
 	HUDClass = ARunHUD::StaticClass();
 }
@@ -273,6 +275,19 @@ void AGrantMoneyGameMode::PrepareRun()
 	if (!bHasSpawner && EnemySpawnerClass)
 	{
 		World->SpawnActor<AEnemySpawner>(EnemySpawnerClass, FTransform::Identity, SpawnParams);
+	}
+
+	// And the reward totems: the spawner waits for the map to be built, then places them once.
+	bool bHasTotemSpawner = false;
+	for (TActorIterator<ARewardTotemSpawner> It(World); It; ++It)
+	{
+		bHasTotemSpawner = true;
+		break;
+	}
+
+	if (!bHasTotemSpawner && RewardTotemSpawnerClass)
+	{
+		World->SpawnActor<ARewardTotemSpawner>(RewardTotemSpawnerClass, FTransform::Identity, SpawnParams);
 	}
 
 	// Wait for the map to be built (the TileMapRenderer builds it at BeginPlay) before the clock starts.
