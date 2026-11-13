@@ -162,6 +162,11 @@ public:
 	// Finds a valid spot for one enemy: the capsule centre to spawn at. False if every attempt failed.
 	bool FindSpawnLocation(FVector& OutCapsuleCentre);
 
+	// The same validated search for any enemy class and distance ring around the player (used to place the
+	// boss, whose capsule is larger than EnemyClass's). Uses this spawner's arena, clearance and ground
+	// settings and its bounded MaxPlacementAttempts. Does not check the run state or the enemy cap.
+	bool FindSpawnLocationForClass(TSubclassOf<AEnemyBase> InEnemyClass, float MinDistance, float MaxDistance, FVector& OutCapsuleCentre);
+
 	// Enemies from this spawner that are alive and not being removed. Dead or removed ones are not counted.
 	UFUNCTION(BlueprintPure, Category = "Spawning")
 	int32 GetActiveEnemyCount() const;

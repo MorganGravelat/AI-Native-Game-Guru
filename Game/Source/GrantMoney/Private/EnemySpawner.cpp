@@ -309,7 +309,12 @@ bool AEnemySpawner::TryPlaceAt(const FVector2D& GroundPlanePosition, float Capsu
 
 bool AEnemySpawner::FindSpawnLocation(FVector& OutCapsuleCentre)
 {
-	if (!EnemyClass || !ResolveArena())
+	return FindSpawnLocationForClass(EnemyClass, MinSpawnDistance, MaxSpawnDistance, OutCapsuleCentre);
+}
+
+bool AEnemySpawner::FindSpawnLocationForClass(TSubclassOf<AEnemyBase> InEnemyClass, float MinDistance, float MaxDistance, FVector& OutCapsuleCentre)
+{
+	if (!InEnemyClass || !ResolveArena())
 	{
 		return false;
 	}
@@ -322,7 +327,7 @@ bool AEnemySpawner::FindSpawnLocation(FVector& OutCapsuleCentre)
 
 	float CapsuleRadius = 0.0f;
 	float CapsuleHalfHeight = 0.0f;
-	EnemyClass->GetDefaultObject<AEnemyBase>()->GetCapsuleComponent()->GetScaledCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
+	InEnemyClass->GetDefaultObject<AEnemyBase>()->GetCapsuleComponent()->GetScaledCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 
 	const FVector CentreLocation = Centre->GetActorLocation();
 	const int32 Attempts = FMath::Max(1, MaxPlacementAttempts);
@@ -330,7 +335,7 @@ bool AEnemySpawner::FindSpawnLocation(FVector& OutCapsuleCentre)
 	for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
 	{
 		++PlacementAttemptCount;
-		const FVector2D Offset = FEnemySpawnPlacement::SampleRingOffset(MinSpawnDistance, MaxSpawnDistance, RandomStream.FRand(), RandomStream.FRand());
+		const FVector2D Offset = FEnemySpawnPlacement::SampleRingOffset(MinDistance, MaxDistance, RandomStream.FRand(), RandomStream.FRand());
 		const FVector2D Position(CentreLocation.X + Offset.X, CentreLocation.Y + Offset.Y);
 
 		if (TryPlaceAt(Position, CapsuleRadius, CapsuleHalfHeight, Centre, OutCapsuleCentre))

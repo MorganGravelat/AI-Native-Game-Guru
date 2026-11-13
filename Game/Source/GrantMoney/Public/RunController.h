@@ -15,7 +15,7 @@ enum class EGrantMoneyRunState : uint8
 	Starting,
 	// Survival time counts and normal enemy spawning is on.
 	Active,
-	// The survival timer reached zero. Normal spawning stops; the boss fight starts here (later ticket).
+	// The survival timer reached zero. Normal spawning stops (by default) and the boss fight starts here (ABossEncounter).
 	BossPhase,
 	// The boss was defeated.
 	Won,
@@ -41,7 +41,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyBossPhaseStarted);
  *  - Active: elapsed survival time grows with game time. Remaining time is RunDurationSeconds minus
  *    elapsed, so changing the duration changes the clock at once. When nothing is left the run enters
  *    BossPhase exactly once; the clock then stays at zero.
- *  - BossPhase: waits for RequestWin or RequestLoss, to be called by the boss integration. RequestWin
+ *  - BossPhase: waits for RequestWin or RequestLoss, called by ABossEncounter (boss death -> RequestWin) and
+ *    the player's death handler (RequestLoss). RequestWin
  *    refuses if the player is already dead (see SetPlayerHealthComponent), so a win and a loss that both
  *    become true in the same tick always resolve to Lost: UHealthComponent marks itself dead synchronously,
  *    before its OnDeath delegate fires, so by the time anything evaluates RequestWin the death is already
@@ -113,9 +114,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Run")
 	float GetRemainingSeconds() const;
 
-	// True only in the Active state, when normal spawning should run.
+	// True when normal spawning should run: in the Active state, and in BossPhase only if
+	// bAllowNormalSpawnsInBossPhase is set.
 	UFUNCTION(BlueprintPure, Category = "Run")
-	bool IsNormalSpawningAllowed() const { return State == EGrantMoneyRunState::Active; }
+	bool IsNormalSpawningAllowed() const
+	{
+		return State == EGrantMoneyRunState::Active || (State == EGrantMoneyRunState::BossPhase && bAllowNormalSpawnsInBossPhase);
+	}
+
+	// Initial boss policy: normal slimes already alive stay alive, but no new ones spawn once the boss
+	// fight starts. Turn on to keep the normal spawner running during the fight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Run")
+	bool bAllowNormalSpawnsInBossPhase = false;
 
 	// Fires on every state change, with the old and new state.
 	UPROPERTY(BlueprintAssignable, Category = "Run")

@@ -51,6 +51,11 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "GameOver")
 	TSubclassOf<UGameOverWidget> GameOverWidgetClass;
 
+	// Optional separate Victory screen (a child of UGameOverWidget with the same widget names). Leave empty to
+	// reuse WBP_GameOver, whose optional ResultTitleText then reads "Victory!".
+	UPROPERTY(EditAnywhere, Category = "GameOver")
+	TSubclassOf<UGameOverWidget> VictoryWidgetClass;
+
 	// Defaults to /Game/UI/WBP_LevelUp.
 	UPROPERTY(EditAnywhere, Category = "LevelUp")
 	TSubclassOf<ULevelUpWidget> LevelUpWidgetClass;
@@ -79,6 +84,9 @@ public:
 	// mode the same way the pause menu does. Safe to call more than once; later calls just refresh the text.
 	void ShowGameOver(float SurvivalSeconds, float Experience);
 
+	// The same screen and flow for a win (Restart / Quit, game paused, cursor shown) with a "Victory!" title.
+	void ShowVictory(float SurvivalSeconds, float Experience);
+
 	// Closes the pause menu if it is open, then shows (creating it the first time) the level-up choice
 	// screen for InUpgrades, refreshing it with InUpgrades->GetCurrentOptions(), and pauses the game —
 	// the same mechanism as ShowGameOver, which is how "suspend combat, the run timer and
@@ -93,6 +101,9 @@ public:
 private:
 	void OpenPauseMenu();
 	void ClosePauseMenu();
+
+	// Shared by ShowGameOver and ShowVictory.
+	void ShowRunResult(TSubclassOf<UGameOverWidget> WidgetClass, const FText& Title, float SurvivalSeconds, float Experience);
 
 	void HandleCameraTurn(const FInputActionValue& Value);
 	void HandleCameraLookUp(const FInputActionValue& Value);
