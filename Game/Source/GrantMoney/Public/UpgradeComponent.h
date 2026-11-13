@@ -11,6 +11,28 @@ class UStatsComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyUpgradeChoiceReady);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyUpgradeChoicesResolved);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyUpgradeChosen);
+
+/** One upgrade the player has taken this run, for a "what I picked" readout. */
+USTRUCT(BlueprintType)
+struct GRANTMONEY_API FGrantMoneyPickedUpgrade
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Upgrade")
+	FName Id;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Upgrade")
+	FText DisplayName;
+
+	// Times picked so far.
+	UPROPERTY(BlueprintReadOnly, Category = "Upgrade")
+	int32 Stacks = 0;
+
+	// 0 = unlimited.
+	UPROPERTY(BlueprintReadOnly, Category = "Upgrade")
+	int32 MaxStacks = 0;
+};
 
 /**
  * Queues level-ups into upgrade choices and applies the one the player picks. Reusable: the five
@@ -79,6 +101,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Upgrades")
 	int32 GetStackCount(FName Id) const;
 
+	// Every upgrade picked this run, in the order it was first picked, with its current stack count.
+	UFUNCTION(BlueprintPure, Category = "Upgrades")
+	TArray<FGrantMoneyPickedUpgrade> GetPickedUpgrades() const;
+
+	// Fires after each pick has been applied, before the next queued choice (if any) is rolled. For HUD readouts.
+	UPROPERTY(BlueprintAssignable, Category = "Upgrades")
+	FOnGrantMoneyUpgradeChosen OnUpgradeChosen;
+
 	// Fires every time a choice becomes ready to show (including a second, third, ... choice from the
 	// same queue, once the previous one was answered). Read GetCurrentOptions() when this fires.
 	UPROPERTY(BlueprintAssignable, Category = "Upgrades")
@@ -113,6 +143,9 @@ private:
 	TObjectPtr<UStatsComponent> Stats;
 
 	TMap<FName, int32> StackCounts;
+
+	// Ids in the order they were first picked.
+	TArray<FName> PickOrder;
 
 	UPROPERTY(Transient)
 	TArray<FGrantMoneyUpgradeDefinition> CurrentOptions;

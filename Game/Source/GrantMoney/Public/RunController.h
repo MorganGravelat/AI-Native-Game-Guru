@@ -53,8 +53,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnGrantMoneyBossPhaseStarted);
  *
  * A level can contain one of these (or a Blueprint child) to set its own duration; otherwise the
  * game mode spawns one with the defaults below. HUD, the enemy spawner (its difficulty ramp follows
- * GetElapsedSeconds) and boss code listen to the events or read the getters. There is no score here:
- * the character's level (once implemented) is the run's progress readout.
+ * GetElapsedSeconds) and boss code listen to the events or read the getters. The run keeps no score of its
+ * own: the HUD derives it from the player's XP and GetElapsedSeconds (FRunHudFormat::ComputeScore).
  */
 UCLASS()
 class GRANTMONEY_API ARunController : public AActor

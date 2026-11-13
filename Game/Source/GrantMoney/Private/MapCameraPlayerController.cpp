@@ -14,6 +14,8 @@
 #include "LevelUpWidget.h"
 #include "MapCameraPawn.h"
 #include "PauseMenuWidget.h"
+#include "RunController.h"
+#include "RunUiPolicy.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UpgradeComponent.h"
 
@@ -173,20 +175,36 @@ void AMapCameraPlayerController::HandleCameraZoom(const FInputActionValue& Value
 
 void AMapCameraPlayerController::TogglePauseMenu()
 {
-	// The run is over, or a level-up choice is forcing a decision; nothing to pause for either way, and
-	// that other screen owns the cursor and input mode now.
-	if ((IsValid(GameOverWidget) && GameOverWidget->IsInViewport()) || (IsValid(LevelUpWidget) && LevelUpWidget->IsInViewport()))
-	{
-		return;
-	}
+	const bool bLevelUpShowing = IsValid(LevelUpWidget) && LevelUpWidget->IsInViewport();
+	const bool bPauseMenuOpen = IsValid(PauseMenuWidget) && PauseMenuWidget->IsInViewport();
 
-	if (IsValid(PauseMenuWidget) && PauseMenuWidget->IsInViewport())
+	if (bPauseMenuOpen)
 	{
-		ClosePauseMenu();
+		ResumeFromPauseMenu();
 	}
-	else
+	else if (FRunUiPolicy::CanOpenPauseMenu(IsRunFinished(), bLevelUpShowing))
 	{
 		OpenPauseMenu();
+	}
+}
+
+bool AMapCameraPlayerController::IsRunFinished() const
+{
+	if (bResultShown)
+	{
+		return true;
+	}
+
+	const ARunController* Run = ARunController::Find(GetWorld());
+	return Run && FRunUiPolicy::IsTerminal(Run->GetState());
+}
+
+void AMapCameraPlayerController::ResumeFromPauseMenu()
+{
+	const bool bLevelUpShowing = IsValid(LevelUpWidget) && LevelUpWidget->IsInViewport();
+	if (FRunUiPolicy::CanResumeFromPauseMenu(IsRunFinished(), bLevelUpShowing))
+	{
+		ClosePauseMenu();
 	}
 }
 
@@ -209,8 +227,16 @@ void AMapCameraPlayerController::ShowRunResult(TSubclassOf<UGameOverWidget> Widg
 		return;
 	}
 
-	// The run just ended; a pause menu open over the result screen would be confusing.
+	// The run just ended. From here on nothing but Restart and Quit may change the pause or the input mode.
+	bResultShown = true;
+
+	// A pause menu or a level-up choice open over the result screen would be confusing, and either could
+	// otherwise hand control back to the game.
 	ClosePauseMenu();
+	if (IsValid(LevelUpWidget))
+	{
+		LevelUpWidget->RemoveFromParent();
+	}
 
 	// A run ends once, so this is created once; a repeated call just refreshes the text.
 	if (!IsValid(GameOverWidget))
@@ -227,7 +253,7 @@ void AMapCameraPlayerController::ShowRunResult(TSubclassOf<UGameOverWidget> Widg
 
 	if (!GameOverWidget->IsInViewport())
 	{
-		GameOverWidget->AddToViewport();
+		GameOverWidget->AddToViewport(ResultZOrder);
 	}
 
 	// Same mechanism the pause menu uses: pausing also freezes the player's movement and weapon timer,
@@ -244,6 +270,13 @@ void AMapCameraPlayerController::ShowRunResult(TSubclassOf<UGameOverWidget> Widg
 
 void AMapCameraPlayerController::ShowLevelUpChoice(UUpgradeComponent* InUpgrades)
 {
+	// A finished run is final: a late choice (for example XP collected on the frame the player died) must
+	// neither cover the result screen nor take its input.
+	if (!FRunUiPolicy::CanShowLevelUp(IsRunFinished()))
+	{
+		return;
+	}
+
 	if (!LevelUpWidgetClass)
 	{
 		UE_LOG(LogTemp, Error, TEXT("MapCameraPlayerController: WBP_LevelUp class is not set."));
@@ -256,10 +289,6 @@ void AMapCameraPlayerController::ShowLevelUpChoice(UUpgradeComponent* InUpgrades
 	if (!IsValid(LevelUpWidget))
 	{
 		LevelUpWidget = CreateWidget<ULevelUpWidget>(this, LevelUpWidgetClass);
-		if (LevelUpWidget)
-		{
-			LevelUpWidget->SetUpgradeComponent(InUpgrades);
-		}
 	}
 
 	if (!LevelUpWidget)
@@ -267,13 +296,17 @@ void AMapCameraPlayerController::ShowLevelUpChoice(UUpgradeComponent* InUpgrades
 		return;
 	}
 
+	// Every call, not only the first: the player (and with it the upgrade component) can be replaced
+	// while this controller and its widget live on, and the widget must never answer a stale component.
+	LevelUpWidget->SetUpgradeComponent(InUpgrades);
+
 	// Each call (including the second, third, ... of several queued choices) re-reads the component's
 	// current options, since they can differ from one choice to the next.
 	LevelUpWidget->RefreshOptions();
 
 	if (!LevelUpWidget->IsInViewport())
 	{
-		LevelUpWidget->AddToViewport();
+		LevelUpWidget->AddToViewport(LevelUpZOrder);
 	}
 
 	// Same mechanism as the pause menu and the Game Over screen: pausing also suspends combat, the run
@@ -289,13 +322,19 @@ void AMapCameraPlayerController::ShowLevelUpChoice(UUpgradeComponent* InUpgrades
 
 void AMapCameraPlayerController::HideLevelUpChoice()
 {
-	UGameplayStatics::SetGamePaused(this, false);
-
 	if (IsValid(LevelUpWidget))
 	{
 		LevelUpWidget->RemoveFromParent();
 	}
 
+	// If the run finished meanwhile the result screen owns the pause and the input mode; resuming here
+	// would restart combat behind it.
+	if (!FRunUiPolicy::ShouldReturnToGameplayAfterLevelUp(IsRunFinished()))
+	{
+		return;
+	}
+
+	UGameplayStatics::SetGamePaused(this, false);
 	bShowMouseCursor = false;
 	SetInputMode(FInputModeGameOnly());
 }
@@ -318,7 +357,7 @@ void AMapCameraPlayerController::OpenPauseMenu()
 		return;
 	}
 
-	PauseMenuWidget->AddToViewport();
+	PauseMenuWidget->AddToViewport(PauseMenuZOrder);
 	UGameplayStatics::SetGamePaused(this, true);
 	bShowMouseCursor = true;
 
@@ -330,13 +369,15 @@ void AMapCameraPlayerController::OpenPauseMenu()
 
 void AMapCameraPlayerController::ClosePauseMenu()
 {
-	UGameplayStatics::SetGamePaused(this, false);
-
-	if (IsValid(PauseMenuWidget))
+	// Nothing to undo if the menu is not open; in particular this must not unpause a game that a
+	// level-up choice or the result screen is holding paused.
+	if (!IsValid(PauseMenuWidget) || !PauseMenuWidget->IsInViewport())
 	{
-		PauseMenuWidget->RemoveFromParent();
+		return;
 	}
 
+	PauseMenuWidget->RemoveFromParent();
+	UGameplayStatics::SetGamePaused(this, false);
 	bShowMouseCursor = false;
 	SetInputMode(FInputModeGameOnly());
 }

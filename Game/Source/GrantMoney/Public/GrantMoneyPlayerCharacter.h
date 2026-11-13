@@ -15,6 +15,7 @@ class ULevelComponent;
 class UPickupComponent;
 class UStarterWeaponComponent;
 class UStatsComponent;
+class UTemporaryBuffComponent;
 class UUpgradeComponent;
 struct FInputActionValue;
 
@@ -52,6 +53,7 @@ public:
 	UPickupComponent* GetPickups() const { return Pickups; }
 	ULevelComponent* GetLevelComponent() const { return LevelComponent; }
 	UUpgradeComponent* GetUpgradeComponent() const { return UpgradeComponent; }
+	UTemporaryBuffComponent* GetTemporaryBuffs() const { return TemporaryBuffs; }
 	// Running XP total (the Experience stat). Orbs add to it when they arrive.
 	float GetExperience() const;
 protected:
@@ -78,6 +80,10 @@ protected:
 	// Queues level-ups into upgrade choices and applies the one picked (SCRUM-36).
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Progression")
 	TObjectPtr<UUpgradeComponent> UpgradeComponent;
+
+	// Timed stat buffs (they remove themselves); the HUD lists them with their remaining time.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Progression")
+	TObjectPtr<UTemporaryBuffComponent> TemporaryBuffs;
 
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;

@@ -35,7 +35,23 @@ public:
 	}
 
 	// (NewLevel, PreviousLevel), in the order OnLevelUp fired.
+	UFUNCTION()
+	void OnUpgradeChosen()
+	{
+		++UpgradeChosenCount;
+	}
+
+	UFUNCTION()
+	void OnBuffsChanged()
+	{
+		++BuffsChangedCount;
+	}
+
 	TArray<TPair<int32, int32>> LevelUps;
+
+	int32 BuffsChangedCount = 0;
+
+	int32 UpgradeChosenCount = 0;
 
 	int32 ChoiceReadyCount = 0;
 	int32 ChoicesResolvedCount = 0;
